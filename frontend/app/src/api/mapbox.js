@@ -1,50 +1,58 @@
-const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+const TOKEN = "pk.eyJ1IjoidGlhZ29tYW5pbmhhIiwiYSI6ImNtb213emZqYTBpdjcyc3M0bHlldWZnc2gifQ.KogqOP6C00qQ8VNtk847Ng"
+const BASE = 'https://api.mapbox.com/directions/v5/mapbox/driving'
 
-function straightLine(origin, destination, waypoint) {
-  const coords = waypoint
-    ? [origin, waypoint, destination]
-    : [origin, destination]
-  const dx = (destination[0] - origin[0]) * 111.32 * Math.cos(origin[1] * Math.PI / 180)
-  const dy = (destination[1] - origin[1]) * 111.32
-  const distKm = Math.sqrt(dx * dx + dy * dy)
+function buildExclude(excludePolygons) {
+  if (!excludePolygons.length) return null
+  const polyStrings = excludePolygons.map((coords) => {
+    const ring = coords[0]
+    const points = ring.map(([lon, lat]) => `${lon} ${lat}`).join(',')
+    return `polygon((${points}))`
+  })
+  return polyStrings.join(',')
+}
+
+async function callDirections(origin, destination, excludeStr) {
+  const coordStr = `${origin[0]},${origin[1]};${destination[0]},${destination[1]}`
+  const params = new URLSearchParams({
+    geometries: 'geojson',
+    overview: 'full',
+    steps: 'false',
+    access_token: TOKEN,
+  })
+  if (excludeStr) params.append('exclude', excludeStr)
+
+  const res = await fetch(`${BASE}/${coordStr}?${params}`)
+  if (!res.ok) {
+    const err = new Error(`Mapbox Directions HTTP ${res.status}`)
+    err.status = res.status
+    throw err
+  }
+  const data = await res.json()
+  if (!data.routes?.length) throw new Error('Sem rota possível')
+
   return {
-    type: 'Feature',
-    geometry: { type: 'LineString', coordinates: coords },
-    properties: {
-      distance: distKm * 1000,
-      duration: (distKm / 0.05) * 60,
-    },
+    geometry: data.routes[0].geometry,
+    distance_km: data.routes[0].distance / 1000,
+    duration_min: data.routes[0].duration / 60,
   }
 }
 
-export async function fetchRoute(origin, destination, waypoint = null) {
+export async function fetchRoute(origin, destination, excludePolygons = []) {
+  // Try with fire polygon exclusions first
+  if (excludePolygons.length) {
+    try {
+      return await callDirections(origin, destination, buildExclude(excludePolygons))
+    } catch (e) {
+      // 422 = exclude not supported by this plan; fall through to route without exclusions
+      if (e.status !== 422) console.warn('Reroute with exclude failed:', e.message)
+    }
+  }
+
+  // Fetch normal route (no exclusions)
   try {
-    const coordStr = waypoint
-      ? `${origin[0]},${origin[1]};${waypoint[0]},${waypoint[1]};${destination[0]},${destination[1]}`
-      : `${origin[0]},${origin[1]};${destination[0]},${destination[1]}`
-
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?geometries=geojson&overview=full&access_token=${TOKEN}`
-    const res = await fetch(url)
-
-    if (res.status === 401 || res.status === 429) {
-      console.warn('Mapbox Directions rate limited, using fallback')
-      return straightLine(origin, destination, waypoint)
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-    const data = await res.json()
-    if (!data.routes?.[0]) throw new Error('No route found')
-
-    return {
-      type: 'Feature',
-      geometry: data.routes[0].geometry,
-      properties: {
-        distance: data.routes[0].distance,
-        duration: data.routes[0].duration,
-      },
-    }
+    return await callDirections(origin, destination, null)
   } catch (e) {
-    console.warn('Mapbox Directions failed, using fallback:', e.message)
-    return straightLine(origin, destination, waypoint)
+    console.error('Route calculation failed:', e.message)
+    return null
   }
 }

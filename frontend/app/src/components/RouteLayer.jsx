@@ -1,14 +1,22 @@
 import { Source, Layer } from 'react-map-gl'
 import useStore from '@/store'
 
+function toGeoJSON(route) {
+  if (!route) return null
+  return { type: 'Feature', geometry: route.geometry, properties: {} }
+}
+
 export default function RouteLayer() {
   const currentRoute = useStore((s) => s.currentRoute)
   const previousRoute = useStore((s) => s.previousRoute)
 
+  const current = toGeoJSON(currentRoute)
+  const previous = toGeoJSON(previousRoute)
+
   return (
     <>
-      {previousRoute && (
-        <Source id="route-old" type="geojson" data={previousRoute}>
+      {previous && (
+        <Source id="route-old" type="geojson" data={previous}>
           <Layer
             id="route-old-line"
             type="line"
@@ -16,14 +24,14 @@ export default function RouteLayer() {
             paint={{
               'line-color': '#ff2e2e',
               'line-width': 4,
-              'line-opacity': 0.8,
+              'line-opacity': 0.7,
               'line-dasharray': [2, 2],
             }}
           />
         </Source>
       )}
-      {currentRoute && (
-        <Source id="route-current" type="geojson" data={currentRoute}>
+      {current && (
+        <Source id="route-current" type="geojson" data={current}>
           <Layer
             id="route-current-line"
             type="line"
@@ -31,6 +39,7 @@ export default function RouteLayer() {
             paint={{
               'line-color': '#39ff14',
               'line-width': 5,
+              'line-blur': 1,
               'line-opacity': 0.95,
             }}
           />
@@ -40,9 +49,9 @@ export default function RouteLayer() {
             layout={{ 'line-cap': 'round', 'line-join': 'round' }}
             paint={{
               'line-color': '#39ff14',
-              'line-width': 10,
-              'line-opacity': 0.15,
-              'line-blur': 4,
+              'line-width': 12,
+              'line-opacity': 0.12,
+              'line-blur': 5,
             }}
           />
         </Source>
