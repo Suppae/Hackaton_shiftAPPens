@@ -1,98 +1,67 @@
-import React, { useState } from 'react';
-import Map, { Source, Layer } from 'react-map-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import { useCallback } from 'react'
+import Map, { NavigationControl } from 'react-map-gl'
+import mapboxgl from 'mapbox-gl'
+import FireLayer from './FireLayer'
+import RouteLayer from './RouteLayer'
+import MarkersLayer from './MarkersLayer'
+import useStore from '@/store'
 
-const MAPBOX_TOKEN = "pk.eyJ1IjoidGlhZ29tYW5pbmhhIiwiYSI6ImNtb213emZqYTBpdjcyc3M0bHlldWZnc2gifQ.KogqOP6C00qQ8VNtk847Ng";
+const INITIAL_VIEW = {
+  longitude: -7.6167,
+  latitude: 40.3217,
+  zoom: 11,
+  pitch: 45,
+  bearing: 0,
+}
 
-export default function MapView({ scenario = null, onBack = () => {} }) {
-  const [viewState, setViewState] = useState({
-    longitude: -8.2520,
-    latitude: 40.0935,
-    zoom: 12,
-    pitch: 45,
-    bearing: 0
-  });
+const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
+const TOKEN = "pk.eyJ1IjoidGlhZ29tYW5pbmhhIiwiYSI6ImNtb213emZqYTBpdjcyc3M0bHlldWZnc2gifQ.KogqOP6C00qQ8VNtk847Ng"
 
-  // MOCK DATA: arrows
-  const predictionArrowsData = {
-    type: 'FeatureCollection',
-    features: [
-      { type: 'Feature', geometry: { type: 'Point', coordinates: [-8.2400, 40.1020] }, properties: { rotation: 20, risk: 'high' } },
-      { type: 'Feature', geometry: { type: 'Point', coordinates: [-8.2370, 40.098] }, properties: { rotation: 20, risk: 'high' } },
-      { type: 'Feature', geometry: { type: 'Point', coordinates: [-8.2350, 40.0950] }, properties: { rotation: 20, risk: 'medium' } }
-    ]
-  };
+export default function MapView({ mapRef, onMapClick }) {
+  const mode = useStore((s) => s.mode)
 
-  const arrowsLayerStyle = {
-    id: 'prediction-arrows-layer',
-    type: 'symbol',
-    layout: {
-      'text-field': '➤',
-      'text-size': 60,
-      'text-rotate': ['get', 'rotation'],
-      'text-allow-overlap': true,
-      'text-ignore-placement': true,
-      'text-anchor': 'center',
-      'text-offset': [0, -0.2],
-      'text-rotation-alignment': 'map',
-      'text-pitch-alignment': 'map'
-    },
-    paint: {
-      'text-color': '#ffe066',
-      'text-halo-color': '#7a0e0e',
-      'text-halo-width': 2
+  const handleLoad = useCallback(({ target: map }) => {
+    if (map.getSource('mapbox-dem')) return
+    map.addSource('mapbox-dem', {
+      type: 'raster-dem',
+      url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+      tileSize: 512,
+      maxzoom: 14,
+    })
+    map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
+    map.addLayer({
+      id: 'sky',
+      type: 'sky',
+      paint: {
+        'sky-type': 'atmosphere',
+        'sky-atmosphere-sun': [0.0, 90.0],
+        'sky-atmosphere-sun-intensity': 15,
+      },
+    })
+  }, [])
+
+  const handleClick = useCallback((e) => {
+    if (mode === 'custom' && onMapClick) {
+      onMapClick([e.lngLat.lng, e.lngLat.lat])
     }
-  };
-
-  const firePolygonData = {
-    type: 'Feature',
-    geometry: {
-      type: 'Polygon',
-      coordinates: [[
-        [-8.2600, 40.0900],
-        [-8.2400, 40.0900],
-        [-8.2400, 40.1000],
-        [-8.2600, 40.1000],
-        [-8.2600, 40.0900]
-      ]]
-    }
-  };
-
-  const fireLayerStyle = {
-    id: 'fire-layer',
-    type: 'fill',
-    paint: {
-      'fill-color': '#ff8c1a',
-      'fill-opacity': 0.55,
-      'fill-outline-color': '#e63946'
-    }
-  };
+  }, [mode, onMapClick])
 
   return (
-    <div style={{ width: '100%', height: '100vh', position: 'relative' }}>
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }}>
-        <button onClick={onBack} style={{ padding: '8px 10px', background: 'rgba(0,0,0,0.6)', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6 }}>← Voltar</button>
-      </div>
-
-      <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, color: '#fff', fontFamily: 'monospace', background: 'rgba(0,0,0,0.45)', padding: '8px 10px', borderRadius: 6 }}>
-        <div style={{ fontSize: 12 }}>Cenário: {scenario ?? 'Padrão'}</div>
-      </div>
-
-      <Map
-        {...viewState}
-        onMove={evt => setViewState(evt.viewState)}
-        style={{ position: 'absolute', width: '100%', height: '100%' }}
-        mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
-        mapboxAccessToken={MAPBOX_TOKEN}
-      >
-        <Source id="fire-data" type="geojson" data={firePolygonData}>
-          <Layer {...fireLayerStyle} />
-        </Source>
-
-        <Source id="arrows-data" type="geojson" data={predictionArrowsData}>
-          <Layer {...arrowsLayerStyle} />
-        </Source>
-      </Map>
-    </div>
-  );
+    <Map
+      ref={mapRef}
+      mapLib={mapboxgl}
+      mapboxAccessToken={TOKEN}
+      initialViewState={INITIAL_VIEW}
+      style={{ width: '100%', height: '100%' }}
+      mapStyle={MAP_STYLE}
+      onLoad={handleLoad}
+      onClick={handleClick}
+      cursor={mode === 'custom' ? 'crosshair' : 'auto'}
+    >
+      <NavigationControl position="bottom-right" />
+      <FireLayer />
+      <RouteLayer />
+      <MarkersLayer />
+    </Map>
+  )
 }

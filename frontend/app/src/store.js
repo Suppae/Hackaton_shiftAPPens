@@ -1,0 +1,50 @@
+import { create } from 'zustand'
+
+const useStore = create((set) => ({
+  ignition: null,
+  timesteps: [],
+  metadata: null,
+
+  currentStep: 0,
+  isPlaying: false,
+
+  origin: [-7.70, 40.28],
+  destination: [-7.53, 40.37],
+
+  currentRoute: null,
+  previousRoute: null,
+  isRerouted: false,
+
+  status: 'idle',
+  mode: 'demo',
+
+  setSimulation: (data) => set({
+    ignition: data.ignition,
+    timesteps: data.timesteps,
+    metadata: data.metadata,
+    currentStep: 0,
+    isPlaying: false,
+    currentRoute: null,
+    previousRoute: null,
+    isRerouted: false,
+    status: 'idle',
+  }),
+
+  setCurrentStep: (step) => set({ currentStep: step }),
+  setIsPlaying: (v) => set({ isPlaying: v }),
+  setOrigin: (coords) => set({ origin: coords }),
+  setDestination: (coords) => set({ destination: coords }),
+
+  setCurrentRoute: (route) => set((state) => ({
+    previousRoute: state.currentRoute,
+    currentRoute: route,
+  })),
+
+  setRerouted: (v) => set({ isRerouted: v }),
+  setStatus: (s) => set({ status: s }),
+  setMode: (m) => set({ mode: m }),
+
+  resetReroute: () => set({ previousRoute: null, isRerouted: false }),
+}))
+
+export default useStore

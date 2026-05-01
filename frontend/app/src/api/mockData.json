@@ -1,0 +1,109 @@
+{
+  "ignition": [-7.6167, 40.3217],
+  "metadata": {
+    "engine": "mock",
+    "wind_speed_ms": 8.0,
+    "wind_direction_deg": 225.0,
+    "humidity_pct": 25.0,
+    "n_steps": 6,
+    "minutes_per_step": 10
+  },
+  "timesteps": [
+    {
+      "t": 1,
+      "minutes_elapsed": 10,
+      "burned_area": {
+        "type": "Feature",
+        "properties": { "timestep": 1, "minutes": 10, "intensity": 0.166 },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-7.6103, 40.3277], [-7.6140, 40.3280], [-7.6188, 40.3248],
+            [-7.6220, 40.3200], [-7.6217, 40.3163], [-7.6180, 40.3160],
+            [-7.6132, 40.3192], [-7.6100, 40.3240], [-7.6103, 40.3277]
+          ]]
+        }
+      }
+    },
+    {
+      "t": 2,
+      "minutes_elapsed": 20,
+      "burned_area": {
+        "type": "Feature",
+        "properties": { "timestep": 2, "minutes": 20, "intensity": 0.333 },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-7.6031, 40.3339], [-7.6095, 40.3345], [-7.6180, 40.3290],
+            [-7.6235, 40.3205], [-7.6229, 40.3141], [-7.6165, 40.3135],
+            [-7.6081, 40.3191], [-7.6025, 40.3275], [-7.6031, 40.3339]
+          ]]
+        }
+      }
+    },
+    {
+      "t": 3,
+      "minutes_elapsed": 30,
+      "burned_area": {
+        "type": "Feature",
+        "properties": { "timestep": 3, "minutes": 30, "intensity": 0.500 },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-7.5952, 40.3419], [-7.6045, 40.3425], [-7.6171, 40.3341],
+            [-7.6255, 40.3215], [-7.6249, 40.3122], [-7.6155, 40.3115],
+            [-7.6029, 40.3199], [-7.5945, 40.3325], [-7.5952, 40.3419]
+          ]]
+        }
+      }
+    },
+    {
+      "t": 4,
+      "minutes_elapsed": 40,
+      "burned_area": {
+        "type": "Feature",
+        "properties": { "timestep": 4, "minutes": 40, "intensity": 0.666 },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-7.5855, 40.3505], [-7.5980, 40.3510], [-7.6152, 40.3392],
+            [-7.6270, 40.3220], [-7.6265, 40.3095], [-7.6140, 40.3090],
+            [-7.5968, 40.3208], [-7.5850, 40.3380], [-7.5855, 40.3505]
+          ]]
+        }
+      }
+    },
+    {
+      "t": 5,
+      "minutes_elapsed": 50,
+      "burned_area": {
+        "type": "Feature",
+        "properties": { "timestep": 5, "minutes": 50, "intensity": 0.833 },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-7.5741, 40.3609], [-7.5900, 40.3610], [-7.6123, 40.3453],
+            [-7.6280, 40.3230], [-7.6279, 40.3071], [-7.6120, 40.3070],
+            [-7.5897, 40.3227], [-7.5740, 40.3450], [-7.5741, 40.3609]
+          ]]
+        }
+      }
+    },
+    {
+      "t": 6,
+      "minutes_elapsed": 60,
+      "burned_area": {
+        "type": "Feature",
+        "properties": { "timestep": 6, "minutes": 60, "intensity": 1.0 },
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [-7.5611, 40.3729], [-7.5805, 40.3725], [-7.6084, 40.3524],
+            [-7.6285, 40.3245], [-7.6289, 40.3051], [-7.6095, 40.3055],
+            [-7.5816, 40.3256], [-7.5615, 40.3535], [-7.5611, 40.3729]
+          ]]
+        }
+      }
+    }
+  ]
+}

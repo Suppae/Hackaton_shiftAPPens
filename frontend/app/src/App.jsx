@@ -1,48 +1,123 @@
-import React, { useState } from 'react';
-import MapView from './components/MapView';
+import { useEffect, useRef, useCallback } from 'react'
+import MapView from '@/components/MapView'
+import TimeSlider from '@/components/TimeSlider'
+import WindHUD from '@/components/WindHUD'
+import StatsPanel from '@/components/StatsPanel'
+import ScenarioPicker from '@/components/ScenarioPicker'
+import Legend from '@/components/Legend'
+import useStore from '@/store'
+import { fetchDemo, fetchSimulation } from '@/api/backend'
+import { fetchRoute } from '@/api/mapbox'
+import { routeIntersectsFire, polygonCentroid, computeDetourWaypoint } from '@/utils/geometry'
 
-function App() {
-  const [view, setView] = useState('menu'); // 'menu' | 'map'
-  const [scenario, setScenario] = useState(null);
+export default function App() {
+  const mapRef = useRef()
 
-  const openMapWith = (sc) => {
-    setScenario(sc);
-    setView('map');
-  };
+  const setSimulation = useStore((s) => s.setSimulation)
+  const setCurrentRoute = useStore((s) => s.setCurrentRoute)
+  const setRerouted = useStore((s) => s.setRerouted)
+  const setStatus = useStore((s) => s.setStatus)
+  const setMode = useStore((s) => s.setMode)
+  const setOrigin = useStore((s) => s.setOrigin)
+  const setDestination = useStore((s) => s.setDestination)
+  const resetReroute = useStore((s) => s.resetReroute)
 
-  if (view === 'map') {
-    return (
-      <MapView
-        scenario={scenario}
-        onBack={() => setView('menu')}
-      />
-    );
+  const origin = useStore((s) => s.origin)
+  const destination = useStore((s) => s.destination)
+  const currentRoute = useStore((s) => s.currentRoute)
+  const timesteps = useStore((s) => s.timesteps)
+  const currentStep = useStore((s) => s.currentStep)
+  const isRerouted = useStore((s) => s.isRerouted)
+
+  // Load Serra da Estrela demo on mount
+  useEffect(() => {
+    loadScenario(null)
+  }, []) // eslint-disable-line
+
+  async function loadScenario(sc) {
+    setStatus('loading')
+    let data
+
+    if (!sc || sc.id === 'demo') {
+      data = await fetchDemo()
+    } else if (sc.id === 'pedrogao') {
+      data = await fetchSimulation(sc.ignition)
+    } else {
+      setStatus('idle')
+      return
+    }
+
+    setSimulation(data)
+    setStatus('idle')
+
+    if (sc?.origin) {
+      setOrigin(sc.origin)
+      setDestination(sc.destination)
+    }
+
+    const center = sc?.center ?? data.ignition
+    if (center) {
+      mapRef.current?.flyTo({ center, zoom: 11, pitch: 45, duration: 2000 })
+    }
   }
 
+  // Re-fetch route when origin/destination changes
+  useEffect(() => {
+    if (!origin || !destination) return
+    let cancelled = false
+    fetchRoute(origin, destination).then((route) => {
+      if (!cancelled) {
+        resetReroute()
+        setCurrentRoute(route)
+      }
+    })
+    return () => { cancelled = true }
+  }, [origin[0], origin[1], destination[0], destination[1]]) // eslint-disable-line
+
+  // Auto-reroute when fire intersects current route
+  useEffect(() => {
+    if (!currentRoute || !timesteps.length || currentStep === 0 || isRerouted) return
+
+    const hasIntersection = timesteps
+      .slice(0, currentStep)
+      .some((step) => routeIntersectsFire(currentRoute, step.burned_area))
+
+    if (!hasIntersection) return
+
+    const latestFire = timesteps[currentStep - 1].burned_area
+    const centroid = polygonCentroid(latestFire)
+    const waypoint = computeDetourWaypoint(origin, destination, centroid)
+
+    fetchRoute(origin, destination, waypoint).then((newRoute) => {
+      if (newRoute) {
+        setCurrentRoute(newRoute)
+        setRerouted(true)
+      }
+    })
+  }, [currentStep]) // eslint-disable-line
+
+  const handleScenarioSelect = useCallback((sc) => {
+    setMode(sc.id)
+    if (sc.id !== 'custom') {
+      loadScenario(sc)
+    }
+  }, []) // eslint-disable-line
+
+  const handleMapClick = useCallback(async ([lon, lat]) => {
+    setStatus('loading')
+    const data = await fetchSimulation({ ignition_lon: lon, ignition_lat: lat })
+    setSimulation(data)
+    setStatus('idle')
+  }, [setSimulation, setStatus])
+
   return (
-    <div style={{ width: '100%', height: '100vh', backgroundColor: '#0b0b0b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 820, padding: 28, borderRadius: 12, background: 'linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.4))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 40px rgba(0,0,0,0.6)', fontFamily: 'Inter, system-ui, sans-serif' }}>
-        <h1 style={{ margin: 0, fontSize: 28, color: '#ffe066' }}>🔥 Tactical Routing — Demo</h1>
-        <p style={{ marginTop: 8, color: '#cbd5e1' }}>Visual demo para rota dinâmica em presença de incêndio florestal. Escolha um cenário para começar.</p>
-
-        <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
-          <button onClick={() => openMapWith('serra') } style={{ flex: 1, padding: '12px 16px', background: '#111827', border: '1px solid #374151', color: '#fff', borderRadius: 8 }}>Demo: Serra da Estrela</button>
-          <button onClick={() => openMapWith('pedrogao') } style={{ flex: 1, padding: '12px 16px', background: '#7c2d12', border: '1px solid #ff8c1a', color: '#fff', borderRadius: 8 }}>Pedrógão Grande</button>
-          <button onClick={() => openMapWith('custom') } style={{ flex: 1, padding: '12px 16px', background: '#063b63', border: '1px solid #22d3ee', color: '#fff', borderRadius: 8 }}>Custom Ignite (click)</button>
-        </div>
-
-        <div style={{ marginTop: 18, display: 'flex', gap: 12 }}>
-          <button onClick={() => openMapWith(null) } style={{ padding: '10px 14px', background: '#052e16', border: '1px solid #39ff14', color: '#d1fae5', borderRadius: 8 }}>Abrir Mapa</button>
-          <a href="https://github.com/" target="_blank" rel="noreferrer" style={{ padding: '10px 14px', display: 'inline-block', textDecoration: 'none', background: '#0f172a', border: '1px solid #374151', color: '#9ca3af', borderRadius: 8 }}>README</a>
-        </div>
-
-        <div style={{ marginTop: 20, fontFamily: 'monospace', color: '#94a3b8', fontSize: 13 }}>
-          <div>Backend: http://localhost:8000</div>
-          <div style={{ marginTop: 6 }}>Mapbox token: env VITE_MAPBOX_TOKEN (fallback token embedded in map component)</div>
-        </div>
-      </div>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#000' }}>
+      <MapView mapRef={mapRef} onMapClick={handleMapClick} />
+      <ScenarioPicker onSelect={handleScenarioSelect} />
+      <WindHUD />
+      <StatsPanel />
+      <TimeSlider />
+      <Legend />
     </div>
-  );
+  )
 }
-
-export default App;

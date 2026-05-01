@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Test-Path \"c:\\\\Users\\\\Tiago\\\\Desktop\\\\hackathon\\\\hackathon_sh1fthappens\\\\frontend\\\\app\\\\src\\\\components\\\\MapView.jsx\")",
+      "Bash(npm run *)",
+      "Bash(node -e \"const p = require\\('c:/Users/Tiago/Desktop/hackathon/hackathon_sh1fthappens/frontend/app/node_modules/react-map-gl/package.json'\\); console.log\\(JSON.stringify\\(p.exports, null, 2\\)\\)\")"
+    ]
+  }
+}
