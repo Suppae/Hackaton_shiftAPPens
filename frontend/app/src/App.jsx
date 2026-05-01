@@ -1,147 +1,46 @@
 import React, { useState } from 'react';
-import Map, { Source, Layer } from 'react-map-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-
-const MAPBOX_TOKEN = "pk.eyJ1IjoidGlhZ29tYW5pbmhhIiwiYSI6ImNtb213emZqYTBpdjcyc3M0bHlldWZnc2gifQ.KogqOP6C00qQ8VNtk847Ng";
+import MapView from './components/MapView';
 
 function App() {
-  const [viewState, setViewState] = useState({
-    longitude: -8.2520,
-    latitude: 40.0935,
-    zoom: 12,
-    pitch: 45, 
-    bearing: 0
-  });
+  const [view, setView] = useState('menu'); // 'menu' | 'map'
+  const [scenario, setScenario] = useState(null);
 
-  // MOCK DATA: Setas de predição do vetor de propagação (Vento + Topografia)
-  const predictionArrowsData = {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [-8.2400, 40.1020] }, // À frente do fogo
-        properties: { 
-          rotation: 20, // Aponta para Nordeste
-          risk: 'high' 
-        }
-      },
-          {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [-8.2370, 40.098] }, // À frente do fogo
-        properties: { 
-          rotation: 20, // Aponta para Nordeste
-          risk: 'high' 
-        }
-      },
-      {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [-8.2350, 40.0950] }, // Lado direito do fogo
-        properties: { 
-          rotation: 20, // Aponta para Este-Nordeste
-          risk: 'medium' 
-        }
-      }
-    ]
+  const openMapWith = (sc) => {
+    setScenario(sc);
+    setView('map');
   };
 
- // ESTILO DAS SETAS (CORRIGIDO PARA USAR ÍCONES NATIVOS DO MAPBOX)
-  // ESTILO DAS SETAS (O Truque Final: Caractere Geométrico Unicode)
-  const arrowsLayerStyle = {
-    id: 'prediction-arrows-layer',
-    type: 'symbol',
-    layout: {
-      'text-field': '➤', // Triângulo geométrico básico (funciona em 100% das fontes)
-      'text-size': 60,
-      'text-rotate': ['get', 'rotation'], // Continua a rodar perfeitamente
-      'text-allow-overlap': true,
-      'text-ignore-placement': true, // Força a renderização mesmo se houver ruas por baixo
-      'text-anchor': 'center',
-      // Forçamos o deslocamento ligeiro para o "bico" do triângulo ser o ponto central da coordenada
-      'text-offset': [0, -0.2],
-      'text-rotation-alignment': 'map', // Obriga a seta a rodar com o terreno (Norte é sempre Norte)
-      'text-pitch-alignment': 'map'
-    },
-    paint: {
-      'text-color': '#c42214',       // Amarelo Néon
-      'text-halo-color': '#000000',  // Borda Preta
-      'text-halo-width': 2
-    }
-  };
-
-  // MOCK DATA: Um polígono a representar a mancha inicial do incêndio
-  const firePolygonData = {
-    type: 'Feature',
-    geometry: {
-      type: 'Polygon',
-      // Um quadrado de coordenadas em redor da Serra da Lousã
-      coordinates: [[
-        [-8.2600, 40.0900],
-        [-8.2400, 40.0900],
-        [-8.2400, 40.1000],
-        [-8.2600, 40.1000],
-        [-8.2600, 40.0900] // Tem de fechar onde começou
-      ]]
-    }
-  };
-
-  // Estilo visual da mancha de fogo (Laranja transparente com borda vermelha viva)
-  const fireLayerStyle = {
-    id: 'fire-layer',
-    type: 'fill',
-    paint: {
-      'fill-color': '#ff4500', // Laranja fogo
-      'fill-opacity': 0.6,     // Semitransparente para ver as ruas por baixo
-      'fill-outline-color': '#ff0000' // Borda vermelha
-    }
-  };
-
-  if (!MAPBOX_TOKEN) {
-    return <div style={{color: 'red', padding: '20px'}}>⚠️ Erro: Token do Mapbox não encontrada.</div>;
+  if (view === 'map') {
+    return (
+      <MapView
+        scenario={scenario}
+        onBack={() => setView('menu')}
+      />
+    );
   }
 
   return (
-    // O container principal
-    <div style={{ width: '99%', height: '100%', position: 'absolute', backgroundColor: '#222' }}>
-      
-      {/* HUD de Comando */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        zIndex: 2, // Garante que fica por cima do mapa
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        padding: '0px',
-        borderRadius: '8px',
-        color: '#00FF00',
-        fontFamily: 'monospace',
-        border: '1px solid #00FF00',
-        boxShadow: '0 0 10px rgba(0, 255, 0, 0.2)'
-      }}>
-        <h2 style={{ margin: '0 0 10px 0', fontSize: '1.2rem' }}>🔥 TACTICAL ROUTING</h2>
-        <p style={{ margin: '5px 0', fontSize: '0.9rem' }}>Status: Aguardando Ignição...</p>
-        <p style={{ margin: '5px 0', fontSize: '0.9rem' }}>Vento: -- km/h</p>
+    <div style={{ width: '100%', height: '100vh', backgroundColor: '#0b0b0b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 820, padding: 28, borderRadius: 12, background: 'linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.4))', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 10px 40px rgba(0,0,0,0.6)', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <h1 style={{ margin: 0, fontSize: 28, color: '#ffe066' }}>🔥 Tactical Routing — Demo</h1>
+        <p style={{ marginTop: 8, color: '#cbd5e1' }}>Visual demo para rota dinâmica em presença de incêndio florestal. Escolha um cenário para começar.</p>
+
+        <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
+          <button onClick={() => openMapWith('serra') } style={{ flex: 1, padding: '12px 16px', background: '#111827', border: '1px solid #374151', color: '#fff', borderRadius: 8 }}>Demo: Serra da Estrela</button>
+          <button onClick={() => openMapWith('pedrogao') } style={{ flex: 1, padding: '12px 16px', background: '#7c2d12', border: '1px solid #ff8c1a', color: '#fff', borderRadius: 8 }}>Pedrógão Grande</button>
+          <button onClick={() => openMapWith('custom') } style={{ flex: 1, padding: '12px 16px', background: '#063b63', border: '1px solid #22d3ee', color: '#fff', borderRadius: 8 }}>Custom Ignite (click)</button>
+        </div>
+
+        <div style={{ marginTop: 18, display: 'flex', gap: 12 }}>
+          <button onClick={() => openMapWith(null) } style={{ padding: '10px 14px', background: '#052e16', border: '1px solid #39ff14', color: '#d1fae5', borderRadius: 8 }}>Abrir Mapa</button>
+          <a href="https://github.com/" target="_blank" rel="noreferrer" style={{ padding: '10px 14px', display: 'inline-block', textDecoration: 'none', background: '#0f172a', border: '1px solid #374151', color: '#9ca3af', borderRadius: 8 }}>README</a>
+        </div>
+
+        <div style={{ marginTop: 20, fontFamily: 'monospace', color: '#94a3b8', fontSize: 13 }}>
+          <div>Backend: http://localhost:8000</div>
+          <div style={{ marginTop: 6 }}>Mapbox token: env VITE_MAPBOX_TOKEN (fallback token embedded in map component)</div>
+        </div>
       </div>
-
-      {/* COMPONENTE DO MAPA CORRIGIDO */}
-     <Map
-        {...viewState}
-        onMove={evt => setViewState(evt.viewState)}
-        style={{ position: "absolute", width: '100%', height: '100%' }}
-        mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
-        mapboxAccessToken={MAPBOX_TOKEN}
-      >
-        
-        {/* AQUI ESTÁ A MAGIA: Injetar o Polígono no Mapa */}
-        <Source id="fire-data" type="geojson" data={firePolygonData}>
-          <Layer {...fireLayerStyle} />
-        </Source>
-
-        <Source id="arrows-data" type="geojson" data={predictionArrowsData}>
-          <Layer {...arrowsLayerStyle} />
-        </Source>
-
-      </Map>
-      
     </div>
   );
 }
