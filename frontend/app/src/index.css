@@ -10,3 +10,11 @@ html, body, #root {
   overflow: hidden;
   background: #000;
 }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.font-mono, code, .stats {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}

@@ -1,37 +1,36 @@
 import { useEffect, useRef, useCallback } from 'react'
 import MapView from '@/components/MapView'
+import RoutePanel, { SCENARIOS } from '@/components/RoutePanel'
 import TimeSlider from '@/components/TimeSlider'
 import WindHUD from '@/components/WindHUD'
-import StatsPanel from '@/components/StatsPanel'
-import ScenarioPicker from '@/components/ScenarioPicker'
 import Legend from '@/components/Legend'
 import useStore from '@/store'
 import { fetchDemo, fetchSimulation } from '@/api/backend'
 import { fetchRoute } from '@/api/mapbox'
-import { routeIntersectsFire, polygonCentroid, computeDetourWaypoint } from '@/utils/geometry'
+import { routeIntersectsFire } from '@/utils/geometry'
 
 export default function App() {
   const mapRef = useRef()
 
-  const setSimulation = useStore((s) => s.setSimulation)
+  const setSimulation   = useStore((s) => s.setSimulation)
   const setCurrentRoute = useStore((s) => s.setCurrentRoute)
-  const setRerouted = useStore((s) => s.setRerouted)
-  const setStatus = useStore((s) => s.setStatus)
-  const setMode = useStore((s) => s.setMode)
-  const setOrigin = useStore((s) => s.setOrigin)
-  const setDestination = useStore((s) => s.setDestination)
-  const resetReroute = useStore((s) => s.resetReroute)
+  const setRerouted     = useStore((s) => s.setRerouted)
+  const setStatus       = useStore((s) => s.setStatus)
+  const setMode         = useStore((s) => s.setMode)
+  const setOrigin       = useStore((s) => s.setOrigin)
+  const setDestination  = useStore((s) => s.setDestination)
+  const resetReroute    = useStore((s) => s.resetReroute)
 
-  const origin = useStore((s) => s.origin)
-  const destination = useStore((s) => s.destination)
+  const origin       = useStore((s) => s.origin)
+  const destination  = useStore((s) => s.destination)
   const currentRoute = useStore((s) => s.currentRoute)
-  const timesteps = useStore((s) => s.timesteps)
-  const currentStep = useStore((s) => s.currentStep)
-  const isRerouted = useStore((s) => s.isRerouted)
+  const timesteps    = useStore((s) => s.timesteps)
+  const currentStep  = useStore((s) => s.currentStep)
+  const isRerouted   = useStore((s) => s.isRerouted)
 
-  // Load Serra da Estrela demo on mount
+  // Load Serra da Estrela demo + auto-calculate initial route on mount
   useEffect(() => {
-    loadScenario(null)
+    loadScenario(SCENARIOS.find((s) => s.id === 'demo'))
   }, []) // eslint-disable-line
 
   async function loadScenario(sc) {
@@ -43,54 +42,47 @@ export default function App() {
     } else if (sc.id === 'pedrogao') {
       data = await fetchSimulation(sc.ignition)
     } else {
+      // custom mode — user clicks map to ignite
       setStatus('idle')
       return
     }
 
     setSimulation(data)
+
+    const orig = sc?.origin ?? origin
+    const dest = sc?.destination ?? destination
+    setOrigin(orig)
+    setDestination(dest)
+
+    // Auto-calculate route for the new scenario
+    const route = await fetchRoute(orig, dest)
+    if (route) {
+      resetReroute()
+      setCurrentRoute(route)
+    }
+
     setStatus('idle')
 
-    if (sc?.origin) {
-      setOrigin(sc.origin)
-      setDestination(sc.destination)
-    }
-
     const center = sc?.center ?? data.ignition
-    if (center) {
-      mapRef.current?.flyTo({ center, zoom: 11, pitch: 45, duration: 2000 })
-    }
+    if (center) mapRef.current?.flyTo({ center, zoom: 11, pitch: 45, duration: 2000 })
   }
 
-  // Re-fetch route when origin/destination changes
-  useEffect(() => {
-    if (!origin || !destination) return
-    let cancelled = false
-    fetchRoute(origin, destination).then((route) => {
-      if (!cancelled) {
-        resetReroute()
-        setCurrentRoute(route)
-      }
-    })
-    return () => { cancelled = true }
-  }, [origin[0], origin[1], destination[0], destination[1]]) // eslint-disable-line
-
-  // Auto-reroute when fire intersects current route
+  // Auto-reroute when fire intersects the current route
   useEffect(() => {
     if (!currentRoute || !timesteps.length || currentStep === 0 || isRerouted) return
 
-    const hasIntersection = timesteps
-      .slice(0, currentStep)
-      .some((step) => routeIntersectsFire(currentRoute, step.burned_area))
-
+    const visibleFire = timesteps.slice(0, currentStep).map((s) => s.burned_area)
+    const hasIntersection = visibleFire.some((fp) =>
+      routeIntersectsFire(currentRoute.geometry, fp)
+    )
     if (!hasIntersection) return
 
-    const latestFire = timesteps[currentStep - 1].burned_area
-    const centroid = polygonCentroid(latestFire)
-    const waypoint = computeDetourWaypoint(origin, destination, centroid)
+    // Pass all visible fire polygons as exclusions to Mapbox Directions
+    const excludePolygons = visibleFire.map((fp) => fp.geometry.coordinates)
 
-    fetchRoute(origin, destination, waypoint).then((newRoute) => {
+    fetchRoute(origin, destination, excludePolygons).then((newRoute) => {
       if (newRoute) {
-        setCurrentRoute(newRoute)
+        setCurrentRoute(newRoute) // saves old route to previousRoute automatically
         setRerouted(true)
       }
     })
@@ -98,9 +90,7 @@ export default function App() {
 
   const handleScenarioSelect = useCallback((sc) => {
     setMode(sc.id)
-    if (sc.id !== 'custom') {
-      loadScenario(sc)
-    }
+    if (sc.id !== 'custom') loadScenario(sc)
   }, []) // eslint-disable-line
 
   const handleMapClick = useCallback(async ([lon, lat]) => {
@@ -113,9 +103,8 @@ export default function App() {
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#000' }}>
       <MapView mapRef={mapRef} onMapClick={handleMapClick} />
-      <ScenarioPicker onSelect={handleScenarioSelect} />
+      <RoutePanel onScenarioSelect={handleScenarioSelect} />
       <WindHUD />
-      <StatsPanel />
       <TimeSlider />
       <Legend />
     </div>
