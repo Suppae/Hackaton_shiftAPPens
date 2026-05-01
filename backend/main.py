@@ -6,7 +6,7 @@ Runs:
 
 Endpoints:
     GET  /              -> health
-    POST /simulate      -> run mock fire spread, returns timestep GeoJSONs
+    POST /simulate      -> run fire spread with environmental data from APIs, returns timestep GeoJSONs
     GET  /simulate/demo -> hardcoded Serra da Estrela scenario for the live demo
 """
 
@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from mock_engine import generate_fire_timesteps
+from api_service import fetch_environmental_data
 
 
 app = FastAPI(title="Wildfire Routing MVP", version="0.1.0")
@@ -74,11 +75,28 @@ def root() -> Dict[str, str]:
 
 @app.post("/simulate", response_model=SimulationResponse)
 def simulate(req: SimulationRequest) -> SimulationResponse:
-    # Mock mode. When the real engine lands, this block reads weather from
-    # OpenWeatherMap v2.5 and elevation from Open Topo Data, then calls the CA.
-    wind_speed = req.wind_speed_ms if req.wind_speed_ms is not None else 5.0
-    wind_dir = req.wind_direction_deg if req.wind_direction_deg is not None else 270.0
-    humidity = req.humidity_pct if req.humidity_pct is not None else 35.0
+    """
+    Run fire spread simulation with environmental data from APIs.
+    
+    Flow:
+    1. Fetch elevation, slope, fuel type, and weather from API(s)
+    2. Use Rothermel model with these parameters
+    3. Return GeoJSON timesteps
+    """
+    # Fetch environmental data (mocked for now, ready for real APIs)
+    env_data = fetch_environmental_data(req.ignition_lon, req.ignition_lat)
+    
+    # Extract wind data: use API if available, otherwise fallback to request
+    weather = env_data.get("weather", {})
+    wind_speed = req.wind_speed_ms if req.wind_speed_ms is not None else weather.get("wind_speed_ms", 5.0)
+    wind_dir = req.wind_direction_deg if req.wind_direction_deg is not None else weather.get("wind_direction_deg", 270.0)
+    humidity = req.humidity_pct if req.humidity_pct is not None else weather.get("relative_humidity_pct", 35.0)
+    temperature = weather.get("temperature_c", 20.0)
+    
+    # Extract terrain and fuel data from API
+    slope_deg = env_data.get("slope_deg", 0.0)
+    fuel_data = env_data.get("fuel", {})
+    fuel_type = env_data.get("fuel_type", "unknown")
 
     timesteps_raw = generate_fire_timesteps(
         ignition_lon=req.ignition_lon,
@@ -86,6 +104,9 @@ def simulate(req: SimulationRequest) -> SimulationResponse:
         wind_speed_ms=wind_speed,
         wind_direction_deg=wind_dir,
         humidity_pct=humidity,
+        slope_deg=slope_deg,
+        fuel_data=fuel_data,
+        temperature_c=temperature,
         n_steps=req.n_steps,
         minutes_per_step=req.minutes_per_step,
     )
@@ -93,12 +114,16 @@ def simulate(req: SimulationRequest) -> SimulationResponse:
     return SimulationResponse(
         ignition=[req.ignition_lon, req.ignition_lat],
         metadata={
-            "engine": "mock",
+            "engine": "rothermel",
             "wind_speed_ms": wind_speed,
             "wind_direction_deg": wind_dir,
             "humidity_pct": humidity,
+            "temperature_c": temperature,
+            "slope_deg": slope_deg,
+            "fuel_type": fuel_type,
             "n_steps": req.n_steps,
             "minutes_per_step": req.minutes_per_step,
+            "elevation_m": env_data.get("elevation_m"),
         },
         timesteps=[TimestepFeature(**ts) for ts in timesteps_raw],
     )
@@ -108,23 +133,35 @@ def simulate(req: SimulationRequest) -> SimulationResponse:
 def simulate_demo() -> Dict[str, Any]:
     """One-shot scenario for the live demo: ignition near Serra da Estrela, PT."""
     ignition_lon, ignition_lat = -7.6167, 40.3217
+    
+    # Fetch environmental data from APIs
+    env_data = fetch_environmental_data(ignition_lon, ignition_lat)
+    
     timesteps_raw = generate_fire_timesteps(
         ignition_lon=ignition_lon,
         ignition_lat=ignition_lat,
-        wind_speed_ms=8.0,
-        wind_direction_deg=225.0,  # blowing FROM SW -> fire spreads NE
-        humidity_pct=25.0,
+        wind_speed_ms=env_data["weather"]["wind_speed_ms"],
+        wind_direction_deg=env_data["weather"]["wind_direction_deg"],
+        humidity_pct=env_data["weather"]["relative_humidity_pct"],
+        slope_deg=env_data["slope_deg"],
+        fuel_data=env_data["fuel"],
+        temperature_c=env_data["weather"]["temperature_c"],
         n_steps=6,
         minutes_per_step=10,
     )
+    
     return {
         "ignition": [ignition_lon, ignition_lat],
         "metadata": {
-            "engine": "mock",
+            "engine": "rothermel",
             "location": "Serra da Estrela, Portugal",
-            "wind_speed_ms": 8.0,
-            "wind_direction_deg": 225.0,
-            "humidity_pct": 25.0,
+            "wind_speed_ms": env_data["weather"]["wind_speed_ms"],
+            "wind_direction_deg": env_data["weather"]["wind_direction_deg"],
+            "humidity_pct": env_data["weather"]["relative_humidity_pct"],
+            "temperature_c": env_data["weather"]["temperature_c"],
+            "slope_deg": env_data["slope_deg"],
+            "fuel_type": env_data["fuel_type"],
+            "elevation_m": env_data["elevation_m"],
             "n_steps": 6,
             "minutes_per_step": 10,
         },
