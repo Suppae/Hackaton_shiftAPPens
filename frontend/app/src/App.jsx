@@ -1,130 +1,119 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import MapView from '@/components/MapView'
-import RoutePanel, { SCENARIOS } from '@/components/RoutePanel'
 import TimeSlider from '@/components/TimeSlider'
 import WindHUD from '@/components/WindHUD'
 import Legend from '@/components/Legend'
 import CompassHUD from '@/components/CompassHUD'
 import FireDetailsPanel from '@/components/FireDetailsPanel'
-import VisibilityToggle from '@/components/VisibilityToggle'
 import LayersToggle from '@/components/LayersToggle'
 import useStore from '@/store'
-import { fetchDemo, fetchSimulation } from '@/api/backend'
-import { fetchRoute } from '@/api/mapbox'
-import { routeIntersectsFire } from '@/utils/geometry'
+import { fetchSimulation, fetchActiveFires } from '@/api/backend'
 
 export default function App() {
   const mapRef = useRef()
+  
+  // Estado UI
   const selectedFire = useStore((s) => s.selectedFire)
   const showCompass = useStore((s) => s.showCompass)
   const showWindHUD = useStore((s) => s.showWindHUD)
   const showLegend = useStore((s) => s.showLegend)
   const showTimeSlider = useStore((s) => s.showTimeSlider)
+<<<<<<< HEAD
   const showRoutePanel = useStore((s) => s.showRoutePanel)
 
+=======
+  const showFireDetailsPanel = useStore((s) => s.showFireDetailsPanel)
+  
+  // Estado Lógico
+>>>>>>> 3c62b372765fa08f19e23efaf4952e5f5b946c6c
   const setSimulation   = useStore((s) => s.setSimulation)
-  const setCurrentRoute = useStore((s) => s.setCurrentRoute)
-  const setRerouted     = useStore((s) => s.setRerouted)
   const setStatus       = useStore((s) => s.setStatus)
   const setMode         = useStore((s) => s.setMode)
-  const setOrigin       = useStore((s) => s.setOrigin)
-  const setDestination  = useStore((s) => s.setDestination)
-  const resetReroute    = useStore((s) => s.resetReroute)
+  const mode            = useStore((s) => s.mode)
 
-  const origin       = useStore((s) => s.origin)
-  const destination  = useStore((s) => s.destination)
-  const currentRoute = useStore((s) => s.currentRoute)
-  const timesteps    = useStore((s) => s.timesteps)
-  const currentStep  = useStore((s) => s.currentStep)
-  const isRerouted   = useStore((s) => s.isRerouted)
+  // Estado Local para os Fogos da Proteção Civil
+  const [activeFiresGeoJSON, setActiveFiresGeoJSON] = useState(null)
 
-  // Load Serra da Estrela demo + auto-calculate initial route on mount
+  // 1. CARREGAR OS FOGOS REAIS NO INÍCIO DA APP
   useEffect(() => {
-    loadScenario(SCENARIOS.find((s) => s.id === 'demo'))
-  }, []) // eslint-disable-line
-
-  async function loadScenario(sc) {
-    setStatus('loading')
-    let data
-
-    if (!sc || sc.id === 'demo') {
-      data = await fetchDemo()
-    } else if (sc.id === 'pedrogao') {
-      data = await fetchSimulation(sc.ignition)
-    } else {
-      // custom mode — user clicks map to ignite
-      setStatus('idle')
-      return
-    }
-
-    setSimulation(data)
-
-    const orig = sc?.origin ?? origin
-    const dest = sc?.destination ?? destination
-    setOrigin(orig)
-    setDestination(dest)
-
-    // Auto-calculate route for the new scenario
-    const route = await fetchRoute(orig, dest)
-    if (route) {
-      resetReroute()
-      setCurrentRoute(route)
-    }
-
-    setStatus('idle')
-
-    const center = sc?.center ?? data.ignition
-    if (center) mapRef.current?.flyTo({ center, zoom: 11, pitch: 45, duration: 2000 })
-  }
-
-  // Auto-reroute when fire intersects the current route
-  useEffect(() => {
-    if (!currentRoute || !timesteps.length || currentStep === 0 || isRerouted) return
-
-    const visibleFire = timesteps.slice(0, currentStep).map((s) => s.burned_area)
-    const hasIntersection = visibleFire.some((fp) =>
-      routeIntersectsFire(currentRoute.geometry, fp)
-    )
-    if (!hasIntersection) return
-
-    // Pass all visible fire polygons as exclusions to Mapbox Directions
-    const excludePolygons = visibleFire.map((fp) => fp.geometry.coordinates)
-
-    fetchRoute(origin, destination, excludePolygons).then((newRoute) => {
-      if (newRoute) {
-        setCurrentRoute(newRoute) // saves old route to previousRoute automatically
-        setRerouted(true)
+    // Forçamos o modo para 'custom' para libertar o mapa
+    setMode('custom');
+    setStatus('loading');
+    
+    fetchActiveFires().then(geojson => {
+      if (geojson && geojson.features && geojson.features.length > 0) {
+        setActiveFiresGeoJSON(geojson);
       }
-    })
-  }, [currentStep]) // eslint-disable-line
+      setStatus('idle');
+      
+      // Anima a câmara para mostrar Portugal inteiro
+      if (mapRef.current) {
+        mapRef.current.flyTo({
+          center: [-8.2245, 39.3999], // Centro aproximado de Portugal Continental
+          zoom: 5.5,
+          pitch: 30,
+          duration: 3000
+        });
+      }
+    });
+  }, [setStatus, setMode]);
 
-  const handleScenarioSelect = useCallback((sc) => {
-    setMode(sc.id)
-    if (sc.id !== 'custom') loadScenario(sc)
-  }, []) // eslint-disable-line
-
+  // 2. CLIQUE NO MAPA / FOGO REAL
   const handleMapClick = useCallback(async ([lon, lat]) => {
     setStatus('loading')
-    const data = await fetchSimulation({ ignition_lon: lon, ignition_lat: lat })
+    
+    // Simula a partir do ponto clicado (Puxa GEE, OpenWeather, Rothermel)
+    const data = await fetchSimulation({ 
+        ignition_lon: lon, 
+        ignition_lat: lat,
+        n_steps: 6,
+        minutes_per_step: 10,
+        engine: "auto",
+        source: "fogos_pt" 
+    })
+    
     setSimulation(data)
+    
+    // Voa suavemente para o ponto de ignição para ver a mancha crescer
+    if (mapRef.current) {
+        mapRef.current.flyTo({
+            center: [lon, lat],
+            zoom: 12,
+            pitch: 50,
+            duration: 2500
+        });
+    }
+    
     setStatus('idle')
   }, [setSimulation, setStatus])
 
+  // Largura do painel de detalhes
   const panelWidth = selectedFire ? 380 : 0
 
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000' }}>
+      
+      {/* Painel lateral (só abre quando se clica na mancha gerada) */}
       <div style={{ width: panelWidth, minWidth: panelWidth, transition: 'width 220ms ease', background: '#050505' }}>
         <FireDetailsPanel />
       </div>
+      
+      {/* Container principal do Mapa */}
       <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
-        <MapView mapRef={mapRef} onMapClick={handleMapClick} />
-        {!selectedFire && showRoutePanel && <RoutePanel onScenarioSelect={handleScenarioSelect} />}
+        
+        <MapView 
+          mapRef={mapRef} 
+          onMapClick={handleMapClick} 
+          activeFires={activeFiresGeoJSON} 
+        />
+        
+        {/* HUDs visíveis */}
         {showWindHUD && <WindHUD />}
         {showCompass && <CompassHUD mapRef={mapRef} />}
         {showTimeSlider && <TimeSlider />}
         {showLegend && <Legend />}
         <LayersToggle />
+        
       </div>
     </div>
   )

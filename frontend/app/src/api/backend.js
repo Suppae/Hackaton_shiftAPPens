@@ -24,7 +24,6 @@ export async function fetchSimulation(params) {
     return await res.json()
   } catch (e) {
     console.warn('Backend unavailable, using mock data:', e.message)
-    // Return mock data adjusted to the requested ignition point
     return {
       ...mockData,
       ignition: [params.ignition_lon, params.ignition_lat],
@@ -35,5 +34,17 @@ export async function fetchSimulation(params) {
         humidity_pct: params.humidity_pct ?? mockData.metadata.humidity_pct,
       },
     }
+  }
+}
+
+export async function fetchActiveFires() {
+  try {
+    const res = await fetch(`${BASE}/active-fires`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    return data 
+  } catch (e) {
+    console.error('Falha ao buscar fogos ativos:', e.message)
+    return null
   }
 }
