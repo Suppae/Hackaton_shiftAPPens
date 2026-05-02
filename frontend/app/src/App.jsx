@@ -4,6 +4,7 @@ import RoutePanel, { SCENARIOS } from '@/components/RoutePanel'
 import TimeSlider from '@/components/TimeSlider'
 import WindHUD from '@/components/WindHUD'
 import Legend from '@/components/Legend'
+import CompassHUD from '@/components/CompassHUD'
 import useStore from '@/store'
 import { fetchDemo, fetchSimulation } from '@/api/backend'
 import { fetchRoute } from '@/api/mapbox'
@@ -105,6 +106,7 @@ export default function App() {
       <MapView mapRef={mapRef} onMapClick={handleMapClick} />
       <RoutePanel onScenarioSelect={handleScenarioSelect} />
       <WindHUD />
+      <CompassHUD mapRef={mapRef} />
       <TimeSlider />
       <Legend />
     </div>

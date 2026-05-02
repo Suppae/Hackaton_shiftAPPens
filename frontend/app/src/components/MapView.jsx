@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import Map, { NavigationControl } from 'react-map-gl'
+import Map from 'react-map-gl'
 import mapboxgl from 'mapbox-gl'
 import FireLayer from './FireLayer'
 import RouteLayer from './RouteLayer'
@@ -58,7 +58,6 @@ export default function MapView({ mapRef, onMapClick }) {
       onClick={handleClick}
       cursor={mode === 'custom' ? 'crosshair' : 'auto'}
     >
-      <NavigationControl position="bottom-right" />
       <FireLayer />
       <RouteLayer />
       <MarkersLayer />
