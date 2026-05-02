@@ -14,14 +14,16 @@ stays clean: it just asks "what's the slope factor from cell A to cell B?"
 
 import json
 import math
+import time
+import urllib.error
 import urllib.request
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 
 TOPO_BASE_URL = "https://api.opentopodata.org/v1/srtm30m"
-HTTP_TIMEOUT_SECONDS = 6
+HTTP_TIMEOUT_SECONDS = 8
 MAX_POINTS_PER_REQUEST = 100
+_RETRY_DELAYS = [2.0, 5.0]  # seconds to wait after 429, per attempt
 
 # Module-level elevation cache: { (lat_r, lon_r): elevation_m }
 _elev_cache: Dict[Tuple[float, float], float] = {}
@@ -61,21 +63,35 @@ def fetch_elevations(
         locations_str = "|".join(f"{lat},{lon}" for _, lat, lon in chunk)
         url = f"{TOPO_BASE_URL}?locations={locations_str}"
 
-        try:
-            with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_SECONDS) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+        data = None
+        for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+            if delay:
+                time.sleep(delay)
+            try:
+                with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code == 429:
+                    print(f"[topo_client] 429 rate-limit (attempt {attempt+1}) — retrying in {_RETRY_DELAYS[attempt] if attempt < len(_RETRY_DELAYS) else '?'}s")
+                else:
+                    print(f"[topo_client] HTTP {exc.code} — skipping {len(chunk)} points")
+                    break
+            except Exception as exc:
+                print(f"[topo_client] Elevation fetch failed: {exc!r} — affected {len(chunk)} points")
+                break
 
-            api_results = data.get("results", [])
-            for j, entry in enumerate(api_results):
-                elev = entry.get("elevation")
-                if elev is not None:
-                    orig_idx = chunk[j][0]
-                    lat, lon = chunk[j][1], chunk[j][2]
-                    results[orig_idx] = float(elev)
-                    _elev_cache[_cache_key(lat, lon)] = float(elev)
+        if data is None:
+            continue
 
-        except Exception as exc:
-            print(f"[topo_client] Elevation fetch failed: {exc!r} — affected {len(chunk)} points")
+        api_results = data.get("results", [])
+        for j, entry in enumerate(api_results):
+            elev = entry.get("elevation")
+            if elev is not None:
+                orig_idx = chunk[j][0]
+                lat, lon = chunk[j][1], chunk[j][2]
+                results[orig_idx] = float(elev)
+                _elev_cache[_cache_key(lat, lon)] = float(elev)
 
     return results
 

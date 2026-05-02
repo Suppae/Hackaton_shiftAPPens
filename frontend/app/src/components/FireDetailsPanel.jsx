@@ -18,21 +18,8 @@ export default function FireDetailsPanel() {
 
   const currentTs = currentStep > 0 ? timesteps[currentStep - 1] : null
 
-  const calculateArea = (ring) => {
-    if (!ring || ring.length < 3) return 0
-    let area = 0
-    for (let i = 0; i < ring.length - 1; i++) {
-      const [lon1, lat1] = ring[i]
-      const [lon2, lat2] = ring[i + 1]
-      area += (lon2 - lon1) * (lat2 + lat1) / 2
-    }
-    return Math.abs(area) * 111 * 111
-  }
-
-  let totalArea = 0
-  if (currentTs?.burned_area?.geometry?.coordinates) {
-    totalArea = calculateArea(currentTs.burned_area.geometry.coordinates[0])
-  }
+  // Use area computed by the backend (already accounts for cell count × cell_size²)
+  const totalArea = currentTs?.burned_area?.properties?.area_km2 ?? 0
 
   const spreadAngle = vectors?.primary_spread_angle
   const spreadCompass = spreadAngle !== undefined ? degreesToCompass(spreadAngle) : null

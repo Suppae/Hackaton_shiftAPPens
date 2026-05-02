@@ -116,33 +116,56 @@ def generate_fire_timesteps(
         dy_m = center_offset_m * math.sin(math.radians(fire_dir_math))
         dlon, dlat = _meters_to_lonlat_offset(dx_m, dy_m, ignition_lat)
 
-        ring = _ellipse_ring(
-            center_lon=ignition_lon + dlon,
-            center_lat=ignition_lat + dlat,
+        center_lon = ignition_lon + dlon
+        center_lat = ignition_lat + dlat
+
+        # Outer ring = current burned area boundary
+        outer_ring = _ellipse_ring(
+            center_lon=center_lon,
+            center_lat=center_lat,
             semi_major_m=semi_major,
             semi_minor_m=semi_minor,
             rotation_math_deg=fire_dir_math,
         )
 
-        feature = {
+        # Inner ring = previous step boundary (approximates burned zone interior)
+        shrink = 0.85
+        inner_ring = _ellipse_ring(
+            center_lon=center_lon,
+            center_lat=center_lat,
+            semi_major_m=max(1.0, semi_major * shrink),
+            semi_minor_m=max(1.0, semi_minor * shrink),
+            rotation_math_deg=fire_dir_math,
+        )
+        # Reverse inner ring for GeoJSON hole convention
+        inner_ring_rev = list(reversed(inner_ring))
+
+        props = {
+            "timestep": t,
+            "minutes": int(t * minutes_per_step),
+            "intensity": round(min(1.0, t / n_steps), 3),
+            "semi_major_m": round(semi_major, 1),
+            "semi_minor_m": round(semi_minor, 1),
+            "area_km2": round(math.pi * semi_major * semi_minor / 1_000_000.0, 3),
+        }
+
+        burned_area_feature = {
             "type": "Feature",
-            "properties": {
-                "timestep": t,
-                "minutes": int(t * minutes_per_step),
-                "intensity": round(min(1.0, t / n_steps), 3),
-                "semi_major_m": round(semi_major, 1),
-                "semi_minor_m": round(semi_minor, 1),
-            },
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [ring],
-            },
+            "properties": props,
+            "geometry": {"type": "Polygon", "coordinates": [inner_ring]},
+        }
+
+        burning_front_feature = {
+            "type": "Feature",
+            "properties": props,
+            "geometry": {"type": "Polygon", "coordinates": [outer_ring, inner_ring_rev]},
         }
 
         timesteps.append({
             "t": t,
             "minutes_elapsed": int(t * minutes_per_step),
-            "burned_area": feature,
+            "burned_area": burned_area_feature,
+            "burning_front": burning_front_feature,
         })
 
     return timesteps

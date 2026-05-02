@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useCallback, useState, useReducer } from 'react'
 import MapView from '@/components/MapView'
 import TimeSlider from '@/components/TimeSlider'
 import WindHUD from '@/components/WindHUD'
@@ -27,6 +27,7 @@ export default function App() {
   const setMode = useStore((s) => s.setMode)
 
   const [activeFiresGeoJSON, setActiveFiresGeoJSON] = useState(null)
+  const [simError, setSimError] = useState(false)
 
   useEffect(() => {
     setMode('custom')
@@ -53,30 +54,36 @@ export default function App() {
   }, [setStatus, setMode])
 
   const handleMapClick = useCallback(async ([lon, lat], fireProps) => {
-    if (fireProps) {
-      setActiveFireInfo(fireProps)
-    }
+    // Always reset stale fire info; only set if we clicked an active fire marker
+    setActiveFireInfo(fireProps || null)
 
     setStatus('loading')
 
-    const data = await fetchSimulation({
-      ignition_lon: lon,
-      ignition_lat: lat,
-      n_steps: 6,
-      minutes_per_step: 10,
-      engine: "auto",
-      source: fireProps?.fireId ? "fogos_pt" : "manual",
-    })
-
-    setSimulation(data)
-
-    if (mapRef.current) {
-      mapRef.current.flyTo({
-        center: [lon, lat],
-        zoom: 12,
-        pitch: 50,
-        duration: 2500
+    try {
+      const data = await fetchSimulation({
+        ignition_lon: lon,
+        ignition_lat: lat,
+        n_steps: 6,
+        minutes_per_step: 10,
+        engine: "ca",
+        source: fireProps?.fireId ? "fogos_pt" : "manual",
       })
+
+      setSimulation(data)
+
+      if (mapRef.current) {
+        mapRef.current.flyTo({
+          center: [lon, lat],
+          zoom: 12,
+          pitch: 50,
+          duration: 2500,
+        })
+      }
+    } catch (err) {
+      console.error('[App] Simulation failed:', err)
+      setSimError(true)
+      setStatus('idle')
+      setTimeout(() => setSimError(false), 4000)
     }
   }, [setSimulation, setStatus, setActiveFireInfo])
 
@@ -101,7 +108,24 @@ export default function App() {
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
             <div className="bg-black/80 backdrop-blur-md rounded-xl px-6 py-3 border border-red-500/30 flex items-center gap-3">
               <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-red-400 tracking-wide" style={{ fontFamily: "'Manrope', sans-serif", fontWeight: 600 }}>A CALCULAR PROPAGAÇÃO...</span>
+              <span className="text-sm text-red-400 tracking-[0.1em] font-semibold" style={{ fontFamily: "'Manrope', sans-serif" }}>A CALCULAR PROPAGAÇÃO...</span>
+            </div>
+          </div>
+        )}
+
+        {simError && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
+            <div className="bg-black/90 backdrop-blur-md rounded-xl px-6 py-3 border border-orange-500/40 flex items-center gap-3">
+              <span className="text-orange-400 text-lg">⚠</span>
+              <span className="text-sm text-orange-300 font-semibold tracking-wide">Backend indisponível — verifica se o servidor está a correr</span>
+            </div>
+          </div>
+        )}
+
+        {status === 'idle' && timesteps.length === 0 && !simError && (
+          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+            <div className="bg-black/60 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/10">
+              <span className="text-xs text-white/40 font-mono tracking-[0.15em]">CLIQUE NO MAPA PARA SIMULAR IGNIÇÃO</span>
             </div>
           </div>
         )}

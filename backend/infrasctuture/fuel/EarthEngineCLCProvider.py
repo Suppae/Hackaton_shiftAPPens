@@ -66,7 +66,7 @@ class EarthEngineCLCProvider(IVegetationDataProvider):
 
         return {band: np.array(data_dict["properties"][band]) for band in bands}
 
-    def _get_seasonal_filter(self, month: int, window_days: int = 7, years_back: int = 5, datetimeObjectDI : datetime = datetime.now()):
+    def _get_seasonal_filter(self, month: int, window_days: int = 7, years_back: int = 5, datetimeObjectDI: datetime = None):
         """
         Returns an ee.Filter that captures the same seasonal window
         across multiple years — e.g., all images from July 15–Aug 15
@@ -77,6 +77,8 @@ class EarthEngineCLCProvider(IVegetationDataProvider):
         - Averages out anomalous years (e.g., drought year vs wet year)
         - Still represents the correct seasonal fuel state
         """
+        if datetimeObjectDI is None:
+            datetimeObjectDI = datetime.now()
         current_year = datetimeObjectDI.year
 
         filters = []

@@ -14,7 +14,11 @@ const INITIAL_VIEW = {
 }
 
 const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
-const TOKEN = "pk.eyJ1IjoidGlhZ29tYW5pbmhhIiwiYSI6ImNtb213emZqYTBpdjcyc3M0bHlldWZnc2gifQ.KogqOP6C00qQ8VNtk847Ng"
+const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || "pk.eyJ1IjoidGlhZ29tYW5pbmhhIiwiYSI6ImNtb213emZqYTBpdjcyc3M0bHlldWZnc2gifQ.KogqOP6C00qQ8VNtk847Ng"
+
+// Portugal + Azores + Madeira bounding box [swLon, swLat, neLon, neLat]
+const PORTUGAL_BOUNDS = [-32.5, 31.5, -5.5, 43.0]
+const MIN_ZOOM = 4
 
 const activeFiresStyle = {
     id: 'active-fires-layer',
@@ -65,28 +69,35 @@ export default function MapView({ mapRef, onMapClick, activeFires }) {
   }, [])
 
   const handleClick = useCallback((e) => {
-    const features = e.features
-    if (!features || features.length === 0) return
+    if (!onMapClick) return
 
-    const fireFeature = features.find(f => f.layer.id === 'active-fires-layer' || f.layer.id === 'active-fires-glow')
-    if (!fireFeature || !onMapClick) return
+    // Check if user clicked an active-fire marker
+    const features = e.features || []
+    const fireFeature = features.find(
+      (f) => f.layer.id === 'active-fires-layer' || f.layer.id === 'active-fires-glow'
+    )
 
-    const [lon, lat] = fireFeature.geometry.coordinates
-    const props = fireFeature.properties || {}
-    onMapClick([lon, lat], {
+    if (fireFeature) {
+      const [lon, lat] = fireFeature.geometry.coordinates
+      const props = fireFeature.properties || {}
+      onMapClick([lon, lat], {
         town: props.town || 'Desconhecido',
         status: props.status || 'N/A',
         man: props.man || 0,
         terrain: props.terrain || '',
         fireId: props.id,
-    })
+      })
+    } else {
+      // Free-map click → custom ignition point, no fire metadata
+      const { lng, lat } = e.lngLat
+      onMapClick([lng, lat], null)
+    }
   }, [onMapClick])
 
   const interactiveLayers = ['active-fires-layer', 'active-fires-glow']
-  if (timesteps.length > 0 && currentStep > 0) {
-    for (let i = 0; i < currentStep; i++) {
-      interactiveLayers.push(`fire-fill-${i}`, `fire-glow-${i}`)
-    }
+  const visibleCount = currentStep > 0 ? currentStep : timesteps.length
+  for (let i = 0; i < visibleCount; i++) {
+    interactiveLayers.push(`fire-fill-${i}`, `fire-front-fill-${i}`)
   }
 
   return (
@@ -101,6 +112,8 @@ export default function MapView({ mapRef, onMapClick, activeFires }) {
       onClick={handleClick}
       interactiveLayerIds={interactiveLayers}
       cursor="pointer"
+      maxBounds={PORTUGAL_BOUNDS}
+      minZoom={MIN_ZOOM}
     >
       {activeFires && (
           <Source id="active-fires-data" type="geojson" data={activeFires}>

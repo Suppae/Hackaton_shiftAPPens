@@ -9,7 +9,6 @@ class GEEAuthSingleton:
     _initialized = False
     credentials = None
 
-
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(GEEAuthSingleton, cls).__new__(cls)
@@ -19,19 +18,26 @@ class GEEAuthSingleton:
         if self._initialized:
             return self.credentials
 
-        creds_json = os.environ.get("GEE_API_KEY")
+        raw = os.environ.get("GEE_API_KEY", "").strip()
+        credentials = None
 
-        credentials = ''
+        if raw:
+            # Accept either a file path or an inline JSON string
+            if os.path.isfile(os.path.expanduser(raw)):
+                path = os.path.expanduser(raw)
+                with open(path, "r") as f:
+                    info = json.load(f)
+                print(f"[GEEAuthSingleton] Loaded service account from file: {path}")
+            else:
+                info = json.loads(raw)
+                print("[GEEAuthSingleton] Loaded service account from inline JSON")
 
-        if creds_json:
             credentials = service_account.Credentials.from_service_account_info(
-                json.loads(creds_json),
-                scopes=["https://www.googleapis.com/auth/earthengine"]
+                info,
+                scopes=["https://www.googleapis.com/auth/earthengine"],
             )
 
-        self.credentials = credentials
-
         ee.Initialize(credentials=credentials)
+        self.credentials = credentials
         self._initialized = True
-
         return credentials

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { Source, Layer, useMap } from 'react-map-gl'
 import useStore from '@/store'
 
@@ -162,35 +162,79 @@ export default function FireLayer() {
 
   if (!timesteps.length) return null
 
+  // Steps to render: all up to currentStep (or all if paused at 0)
+  const visibleSteps = currentStep === 0
+    ? timesteps
+    : timesteps.slice(0, currentStep)
+
+  const latestIdx = visibleSteps.length - 1
+
   return (
     <>
-      {timesteps.map((step, i) => {
-        const visible = i < currentStep || currentStep === 0
-        const ratio = currentStep > 0 ? (i + 1) / currentStep : (i + 1) / timesteps.length
-        const fillOpacity = visible ? 0.25 + 0.55 * ratio : 0
-        const isLatest = visible && (currentStep === 0 ? i === timesteps.length - 1 : i === currentStep - 1)
+      {visibleSteps.map((step, i) => {
+        const isLatest = i === latestIdx
 
         return (
-          <Source key={`fire-src-${i}`} id={`fire-src-${i}`} type="geojson" data={step.burned_area}>
-            <Layer
-              id={`fire-fill-${i}`}
-              type="fill"
-              paint={{
-                'fill-color': fillColor,
-                'fill-opacity': currentStep > 0 ? fillOpacity : (0.15 + 0.1 * ratio),
-              }}
-            />
-            <Layer
-              id={`fire-glow-${i}`}
-              type="line"
-              paint={{
-                'line-color': '#ff8c1a',
-                'line-width': isLatest ? 3 : 1.5,
-                'line-blur': 3,
-                'line-opacity': isLatest ? glowOpacity : (visible ? 0.3 : 0),
-              }}
-            />
-          </Source>
+          <React.Fragment key={`fire-src-${i}`}>
+            {/* ── Burned zone (charcoal/black) ───────────────────────── */}
+            <Source id={`burned-src-${i}`} type="geojson" data={step.burned_area}>
+              <Layer
+                id={`fire-fill-${i}`}
+                type="fill"
+                paint={{
+                  'fill-color': '#1a0a00',
+                  'fill-opacity': isLatest ? 0.82 : 0.70,
+                }}
+              />
+              <Layer
+                id={`fire-glow-${i}`}
+                type="line"
+                paint={{
+                  'line-color': '#3d1500',
+                  'line-width': 1,
+                  'line-opacity': 0.5,
+                }}
+              />
+            </Source>
+
+            {/* ── Active fire front (red/orange jagged cells) ─────────── */}
+            {step.burning_front && isLatest && (
+              <Source id={`front-src-${i}`} type="geojson" data={step.burning_front}>
+                <Layer
+                  id={`fire-front-fill-${i}`}
+                  type="fill"
+                  paint={{
+                    'fill-color': '#ff4500',
+                    'fill-opacity': 0.90,
+                  }}
+                />
+                <Layer
+                  id={`fire-front-glow-${i}`}
+                  type="line"
+                  paint={{
+                    'line-color': '#ffcc00',
+                    'line-width': 2.5,
+                    'line-blur': 4,
+                    'line-opacity': glowOpacity,
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* ── Ember glow on older fronts (faint orange outline) ───── */}
+            {step.burning_front && !isLatest && (
+              <Source id={`front-src-${i}`} type="geojson" data={step.burning_front}>
+                <Layer
+                  id={`fire-front-fill-${i}`}
+                  type="fill"
+                  paint={{
+                    'fill-color': '#cc2200',
+                    'fill-opacity': 0.45,
+                  }}
+                />
+              </Source>
+            )}
+          </React.Fragment>
         )
       })}
 

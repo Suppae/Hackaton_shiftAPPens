@@ -10,11 +10,13 @@ Endpoints:
     GET  /simulate/demo -> hardcoded Serra da Estrela scenario for live demo
 """
 
+import json
 import math
 import os
+import urllib.request
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +24,14 @@ from pydantic import BaseModel, Field
 
 from mock_engine import generate_fire_timesteps as mock_fire
 from fire_engine import simulate as ca_fire, compute_bbox_polygon
+from fire_engine import (
+    _estimate_dfmc,
+    _compute_no_wind_ros,
+    _wind_factor as ca_wind_factor,
+    _moisture_damping as ca_moisture_damping,
+    FUEL_MODELS,
+    DEFAULT_FUEL_MODEL,
+)
 from weather_client import get_weather, WeatherSnapshot
 
 
@@ -96,6 +106,7 @@ class TimestepFeature(BaseModel):
     t: int
     minutes_elapsed: int
     burned_area: Dict[str, Any]
+    burning_front: Optional[Dict[str, Any]] = None  # individual cell squares of active fire front
 
 
 class VectorsPayload(BaseModel):
@@ -134,17 +145,107 @@ class SimulationResponse(BaseModel):
 def _resolve_engine(choice: EngineChoice) -> str:
     if choice == EngineChoice.mock:
         return "mock"
-    if choice == EngineChoice.ca:
-        return "ca"
-    if os.environ.get("OWM_API_KEY", "").strip():
-        return "ca"
-    return "mock"
+    # "auto" and "ca" always run the real CA engine.
+    # Weather comes from Open-Meteo (no key needed); mock only as inner fallback.
+    return "ca"
 
 
-def _wind_spread_bearing(wind_direction_deg: float) -> float:
-    """Geographic bearing (CW from N) where fire spreads due to wind alone."""
-    # wind_direction_deg is FROM direction; fire goes downwind = +180°
-    return (wind_direction_deg + 180.0) % 360.0
+def _meteo_to_math_rad(wind_from_deg: float) -> float:
+    """Convert meteorological wind FROM direction to math angle (CCW from East)."""
+    return math.radians((270.0 - wind_from_deg) % 360.0)
+
+
+def _compute_spread_angle(
+    wind_speed_ms: float,
+    wind_direction_deg: float,
+    temperature_c: float,
+    humidity_pct: float,
+    elev_ignition: Optional[float],
+    elev_n: Optional[float],
+    elev_s: Optional[float],
+    elev_e: Optional[float],
+    elev_w: Optional[float],
+    cell_size_m: float = 120.0,
+) -> Tuple[float, float]:
+    """
+    Compute the dominant fire spread bearing using Rothermel-inspired physics.
+
+    Fire spread direction is the resultant vector of:
+      - Wind (pushes fire downwind)
+      - Slope (pushes fire uphill, weighted at 0.3×)
+
+    Rate of spread uses full fuel + wind + slope + moisture model:
+      ROS = ROS_0 × Φ_W × Φ_S × η_M
+
+    Returns (primary_spread_angle_deg, speed_m_per_min).
+    """
+    wind_rad = _meteo_to_math_rad(wind_direction_deg)
+
+    # ── Wind vector in math coords (CCW from East) ──
+    wx = wind_speed_ms * math.cos(wind_rad)
+    wy = wind_speed_ms * math.sin(wind_rad)
+
+    # ── Slope vector: steepest uphill from 4 cardinal neighbours ──
+    sx, sy = 0.0, 0.0
+    best_slope = 0.0
+    if elev_ignition is not None:
+        best_dx, best_dy = 0.0, 0.0
+
+        directions = [
+            (-1, 0, elev_n),  # North
+            ( 1, 0, elev_s),  # South
+            ( 0, 1, elev_e),  # East
+            ( 0,-1, elev_w),  # West
+        ]
+        for dr, dc, elev_nbr in directions:
+            if elev_nbr is not None:
+                rise = elev_nbr - elev_ignition
+                if rise > 0:
+                    dist_m = math.sqrt(dr * dr + dc * dc) * cell_size_m
+                    slope_pct = rise / dist_m
+                    if slope_pct > best_slope:
+                        best_slope = slope_pct
+                        dx = float(dc)
+                        dy = float(-dr)
+                        best_dx, best_dy = dx, dy
+
+        if best_slope > 0:
+            angle_rad = math.atan2(best_dy, best_dx)
+            slope_mag = min(best_slope * 200.0, wind_speed_ms)
+            sx = slope_mag * math.cos(angle_rad)
+            sy = slope_mag * math.sin(angle_rad)
+
+    # ── Combine: wind dominates, slope nudges ──
+    cx = wx + 0.3 * sx
+    cy = wy + 0.3 * sy
+
+    # Math angle (CCW from E) → geographic bearing (CW from N)
+    primary_angle = (90.0 - math.degrees(math.atan2(cy, cx))) % 360.0
+
+    # ── Rothermel Rate of Spread ──
+    fuel = FUEL_MODELS[DEFAULT_FUEL_MODEL]
+    dfmc = _estimate_dfmc(humidity_pct, temperature_c)
+    ros_base = _compute_no_wind_ros(
+        fuel["load"], fuel["savr"], fuel["heat"],
+        fuel["depth"], dfmc, fuel["m_ext"],
+    )
+
+    # Wind factor in primary spread direction
+    phi_w = ca_wind_factor(wind_speed_ms, wind_rad, wind_rad)
+
+    # Slope factor
+    phi_s = 1.0
+    if best_slope > 0:
+        phi_s = min(5.0, 1.0 + 2.0 * best_slope)
+
+    # Moisture damping
+    eta_m = ca_moisture_damping(humidity_pct, temperature_c)
+
+    # Combined ROS: R = R_0 × Φ_W × Φ_S × η_M
+    ros_m_per_s = ros_base * phi_w * phi_s * eta_m
+    speed_m_per_min = max(0.5, ros_m_per_s * 60.0)
+
+    return primary_angle, speed_m_per_min
 
 
 def _run_simulation(
@@ -178,20 +279,52 @@ def _run_simulation(
         if humidity_pct is not None:
             weather.humidity_pct = humidity_pct
 
-    # ── 2. FETCH ELEVATION REAL (sempre que use_topo=True) ─────────────
-    if use_topo and engine == "mock":
+    # ── 2. FETCH ELEVATION + COMPUTE SPREAD ANGLE (sempre) ─────────────
+    elev_ignition: Optional[float] = None
+    elev_n: Optional[float] = None
+    elev_s: Optional[float] = None
+    elev_e: Optional[float] = None
+    elev_w: Optional[float] = None
+
+    if use_topo:
         from topo_client import fetch_elevations as _fetch_topo
-        half = 40 // 2
         dlat = 120.0 / 111_320.0
         dlon = 120.0 / (111_320.0 * math.cos(math.radians(ignition_lat)))
-        points = [(ignition_lat, ignition_lon),
-                   (ignition_lat + dlat, ignition_lon)]
+        points = [
+            (ignition_lat, ignition_lon),                # ignition
+            (ignition_lat + dlat, ignition_lon),         # N
+            (ignition_lat - dlat, ignition_lon),         # S
+            (ignition_lat, ignition_lon + dlon),         # E
+            (ignition_lat, ignition_lon - dlon),         # W
+        ]
         elevs = _fetch_topo(points)
-        if elevs[0] is not None and elevs[1] is not None:
-            dz = elevs[1] - elevs[0]
-            slope_pct = dz / 120.0
-            weather.temperature_c += slope_pct * 2
-            print(f"[main] Elevation at ignition: {elevs[0]:.0f}m (slope: {slope_pct:.3f})")
+        elev_ignition = elevs[0] if elevs[0] is not None else None
+        elev_n = elevs[1] if elevs[1] is not None else None
+        elev_s = elevs[2] if elevs[2] is not None else None
+        elev_e = elevs[3] if elevs[3] is not None else None
+        elev_w = elevs[4] if elevs[4] is not None else None
+
+        if elev_ignition is not None:
+            max_slope = 0.0
+            for nbr in [elev_n, elev_s, elev_e, elev_w]:
+                if nbr is not None:
+                    s = abs(nbr - elev_ignition) / 120.0
+                    max_slope = max(max_slope, s)
+            weather.temperature_c += max_slope * 2
+            print(f"[main] Elevation: {elev_ignition:.0f}m, max_slope: {max_slope:.3f}")
+
+    # Compute spread angle using wind + slope (Rothermel-inspired)
+    spread_angle, spread_speed = _compute_spread_angle(
+        weather.wind_speed_ms,
+        weather.wind_direction_deg,
+        weather.temperature_c,
+        weather.humidity_pct,
+        elev_ignition, elev_n, elev_s, elev_e, elev_w,
+    )
+
+    # Determine engine tag
+    has_real_elevation = elev_ignition is not None
+    topo_tag = "" if has_real_elevation else "(no topo)"
 
     if engine == "ca":
         # ── Fetch GEE satellite data (optional) ──────────────────────────
@@ -217,7 +350,7 @@ def _run_simulation(
                 use_topo=use_topo,
                 gee_layers=gee_layers,
             )
-            actual_engine = "ca" + ("+gee" if gee_layers is not None else "")
+            actual_engine = "ca" + ("+gee" if gee_layers is not None else "") + topo_tag
 
         except Exception as exc:
             print(f"[main] CA engine failed: {exc!r} — falling back to mock")
@@ -232,9 +365,9 @@ def _run_simulation(
             )
             result = {
                 "timesteps": raw_timesteps,
-                "primary_spread_angle": round(_wind_spread_bearing(weather.wind_direction_deg), 1),
-                "wind_angle": round(weather.wind_direction_deg, 1),
-                "speed_m_per_min": round(max(1.0, weather.wind_speed_ms * 0.03 * 60.0), 2),
+                "primary_spread_angle": spread_angle,
+                "wind_angle": weather.wind_direction_deg,
+                "speed_m_per_min": spread_speed,
                 "fuel_load_mean": 0.42,
                 "ndvi_mean": 0.5,
                 "bbox_polygon": compute_bbox_polygon(ignition_lon, ignition_lat, 40, 120.0),
@@ -253,14 +386,14 @@ def _run_simulation(
         )
         result = {
             "timesteps": raw_timesteps,
-            "primary_spread_angle": round(_wind_spread_bearing(weather.wind_direction_deg), 1),
-            "wind_angle": round(weather.wind_direction_deg, 1),
-            "speed_m_per_min": round(max(1.0, weather.wind_speed_ms * 0.03 * 60.0), 2),
+            "primary_spread_angle": spread_angle,
+            "wind_angle": weather.wind_direction_deg,
+            "speed_m_per_min": spread_speed,
             "fuel_load_mean": 0.42,
             "ndvi_mean": 0.5,
             "bbox_polygon": compute_bbox_polygon(ignition_lon, ignition_lat, 40, 120.0),
         }
-        actual_engine = "mock"
+        actual_engine = "mock" + topo_tag
 
     return SimulationResponse(
         ignition=[ignition_lon, ignition_lat],
@@ -301,13 +434,13 @@ def _run_simulation(
 @app.get("/")
 def root() -> Dict[str, str]:
     has_owm = bool(os.environ.get("OWM_API_KEY", "").strip())
-    has_gee = bool(os.environ.get("GEE_CREDENTIALS_PATH", "").strip())
+    has_gee = bool(os.environ.get("GEE_API_KEY", "").strip())
     return {
         "status": "ok",
         "service": "wildfire-routing-mvp",
         "owm_configured": str(has_owm),
         "gee_configured": str(has_gee),
-        "default_engine": "ca" if has_owm else "mock",
+        "default_engine": "ca",
     }
 
 
@@ -327,18 +460,6 @@ def simulate(req: SimulationRequest) -> SimulationResponse:
         source=req.source or "manual",
     )
 
-
-# Portugal mainland bounding box (lon_min, lat_min, lon_max, lat_max)
-_PORTUGAL_BBOX = [[-9.5, 36.8], [-6.2, 36.8], [-6.2, 42.2], [-9.5, 42.2]]
-
-
-import urllib.request
-import json
-
-# ... (resto do teu código, imports, etc) ...
-
-import urllib.request
-import json
 
 @app.get("/active-fires")
 def active_fires() -> Dict[str, Any]:
