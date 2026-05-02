@@ -6,9 +6,10 @@ import json
 import os
 from datetime import datetime, timedelta
 
+from infrasctuture.GEEAuthSingleton import GEEAuthSingleton
 from infrasctuture.fuel.IVegetationDataProvider import IVegetationDataProvider
 
-CACHE_DIR = "backend/infrasctuture/fuel/.gee_cache"
+CACHE_DIR = "infrasctuture/fuel/.gee_cache"
 
 class EarthEngineCLCProvider(IVegetationDataProvider):
 
@@ -48,22 +49,10 @@ class EarthEngineCLCProvider(IVegetationDataProvider):
         521: 0.0,  # coastal lagoons
     }
 
-    def __init__(self, credentials_path: str):
-        self.credentials_path = credentials_path
+    def __init__(self):
+        self.credentials = None
         self._initialized = False  # lazy init — GEE not called until first use
         self.cache = {}
-
-    def _ensure_initialized(self):
-        if self._initialized:
-            return
-
-        credentials = service_account.Credentials.from_service_account_file(
-            self.credentials_path,
-            scopes=["https://www.googleapis.com/auth/earthengine"]
-        )
-
-        ee.Initialize(credentials=credentials)
-        self._initialized = True
 
     # ------------------------------------------------------------------
     # Core fetch
@@ -184,7 +173,8 @@ class EarthEngineCLCProvider(IVegetationDataProvider):
     # ------------------------------------------------------------------
 
     def get_fuel_grid(self, polygon, fire_month: int = 7):
-        self._ensure_initialized()
+        self.credentials = GEEAuthSingleton().initialize()
+
         key = self._polygon_key(polygon, fire_month)
 
         if key in self.cache:
