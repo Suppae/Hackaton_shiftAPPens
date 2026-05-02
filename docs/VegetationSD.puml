@@ -1,0 +1,50 @@
+@startuml
+skinparam style strictuml
+skinparam SequenceMessageAlignment center
+skinparam NoteBackgroundColor #FEFECE
+
+participant "Caller" as C
+participant "EarthEngineCLCProvider" as P
+database "Internal Cache" as Cache
+entity "Google Earth Engine (API)" as GEE
+
+C -> P : get_vegetation_layers(polygon)
+activate P
+
+    P -> P : _polygon_key(polygon)
+    
+    P -> Cache : Verifica cache (Hash MD5)
+    alt Cache Hit
+        Cache --> P : Dados existentes
+        P --> C : Return layers
+    else Cache Miss
+        
+        note right of P
+            **Fase de Definição Virtual**
+            Prepara referências para CLC,
+            NDVI, NDMI e LAI sem baixar dados.
+        end note
+        
+        P -> P : ee.Image.cat([clc, ndvi, ndmi, lai])
+        
+        note over P, GEE
+            **REQUISIÇÃO ÚNICA**
+            Envia o gráfico de processamento completo
+        end note
+        
+        P -> GEE : _extract_multi_band(combined_image)
+        GEE --> P : Dictionary {band_name: pixel_matrix}
+        
+        note right of P
+            **Processamento Numpy (Local)**
+            1. Vectorize CLC -> Fuel
+            2. Scale NDVI/NDMI (/10000)
+            3. Clip LAI (0-10)
+        end note
+
+        P -> Cache : Salva resultado processado
+        P --> C : Return layers {fuel, ndvi, ndmi, lai}
+    end
+
+deactivate P
+@enduml
