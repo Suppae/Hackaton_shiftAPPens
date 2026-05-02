@@ -21,7 +21,6 @@ export default function App() {
   const showLegend = useStore((s) => s.showLegend)
   const showTimeSlider = useStore((s) => s.showTimeSlider)
   const showRoutePanel = useStore((s) => s.showRoutePanel)
-  const showFireDetailsPanel = useStore((s) => s.showFireDetailsPanel)
 
   const setSimulation   = useStore((s) => s.setSimulation)
   const setCurrentRoute = useStore((s) => s.setCurrentRoute)
@@ -116,7 +115,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000' }}>
       <div style={{ width: panelWidth, minWidth: panelWidth, transition: 'width 220ms ease', background: '#050505' }}>
-        {showFireDetailsPanel && <FireDetailsPanel />}
+        <FireDetailsPanel />
       </div>
       <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
         <MapView mapRef={mapRef} onMapClick={handleMapClick} />

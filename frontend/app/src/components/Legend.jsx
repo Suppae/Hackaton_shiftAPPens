@@ -7,7 +7,7 @@ export default function Legend() {
   ]
 
   return (
-    <div className="absolute bottom-24 right-4 z-10">
+    <div className="absolute top-64 right-4 z-10">
       <div className="bg-black/70 backdrop-blur-md rounded-xl p-3 border border-white/10">
         <div className="text-xs font-mono text-white/50 mb-2 tracking-widest uppercase">Intensidade</div>
         <div className="flex flex-col gap-1">
