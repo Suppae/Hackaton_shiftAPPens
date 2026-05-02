@@ -1,0 +1,84 @@
+# =========================
+# 🐍 Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pytest / unittest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================
+# 🧪 Logs & runtime
+# =========================
+*.log
+*.out
+*.err
+
+# =========================
+# 🔐 Credentials (CRÍTICO)
+# =========================
+# Google Cloud / Earth Engine
+*.json
+*.key
+*.pem
+
+credentials/
+secrets/
+*.service-account.json
+
+# evita acidental commit de OAuth / GCP files
+client_secret_*.json
+*-credentials.json
+
+# =========================
+# 🌍 Google Earth Engine cache/local
+# =========================
+.ee/
+earthengine/
+.ee-auth/
+
+# =========================
+# 🧠 IDEs
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# 🧬 OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# 📦 Docker (se aplicável)
+# =========================
+docker-compose.override.yml
+
+# =========================
+# 📁 Project-specific (ajusta ao teu backend)
+# =========================
+dist/
+build/
+node_modules/
+
+# FastAPI / backend artifacts (se usares)
+*.sqlite3
+*.db
