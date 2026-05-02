@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import Map, { Source, Layer } from 'react-map-gl'
 import mapboxgl from 'mapbox-gl'
 import FireLayer from './FireLayer'
-import RouteLayer from './RouteLayer'
 import MarkersLayer from './MarkersLayer'
 import useStore from '@/store'
 
@@ -42,7 +41,6 @@ const activeFiresGlowStyle = {
 }
 
 export default function MapView({ mapRef, onMapClick, activeFires }) {
-  const mode = useStore((s) => s.mode)
   const timesteps = useStore((s) => s.timesteps)
   const currentStep = useStore((s) => s.currentStep)
 
@@ -68,32 +66,21 @@ export default function MapView({ mapRef, onMapClick, activeFires }) {
 
   const handleClick = useCallback((e) => {
     const features = e.features
-    if (features && features.length > 0) {
-        const fireFeature = features.find(f => f.layer.id === 'active-fires-layer' || f.layer.id === 'active-fires-glow')
-        if (fireFeature && onMapClick) {
-            const [lon, lat] = fireFeature.geometry.coordinates
-            const props = fireFeature.properties || {}
-            onMapClick([lon, lat], {
-                town: props.town || 'Desconhecido',
-                status: props.status || 'N/A',
-                man: props.man || 0,
-                terrain: props.terrain || '',
-                fireId: props.id,
-            })
-            return
-        }
-    }
+    if (!features || features.length === 0) return
 
-    if (mode === 'custom' && onMapClick) {
-      onMapClick([e.lngLat.lng, e.lngLat.lat], {
-          town: 'Ponto Manual',
-          status: 'Simulação',
-          man: 0,
-          terrain: '',
-          fireId: null,
-      })
-    }
-  }, [mode, onMapClick])
+    const fireFeature = features.find(f => f.layer.id === 'active-fires-layer' || f.layer.id === 'active-fires-glow')
+    if (!fireFeature || !onMapClick) return
+
+    const [lon, lat] = fireFeature.geometry.coordinates
+    const props = fireFeature.properties || {}
+    onMapClick([lon, lat], {
+        town: props.town || 'Desconhecido',
+        status: props.status || 'N/A',
+        man: props.man || 0,
+        terrain: props.terrain || '',
+        fireId: props.id,
+    })
+  }, [onMapClick])
 
   const interactiveLayers = ['active-fires-layer', 'active-fires-glow']
   if (timesteps.length > 0 && currentStep > 0) {
@@ -113,7 +100,7 @@ export default function MapView({ mapRef, onMapClick, activeFires }) {
       onLoad={handleLoad}
       onClick={handleClick}
       interactiveLayerIds={interactiveLayers}
-      cursor={mode === 'custom' ? 'crosshair' : 'auto'}
+      cursor="pointer"
     >
       {activeFires && (
           <Source id="active-fires-data" type="geojson" data={activeFires}>
@@ -123,7 +110,6 @@ export default function MapView({ mapRef, onMapClick, activeFires }) {
       )}
 
       <FireLayer />
-      <RouteLayer />
       <MarkersLayer />
     </Map>
   )

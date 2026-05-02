@@ -55,27 +55,30 @@ export default function FireDetailsPanel() {
 
   return (
     <div className="h-full overflow-y-auto panel-scroll">
-      <div className="h-full bg-black/95 backdrop-blur-md border-l border-orange-400/20 flex flex-col">
+      <div className="h-full bg-gradient-to-b from-gray-950 via-gray-950 to-[#080204] flex flex-col">
 
         {/* Header */}
-        <div className="px-5 py-4 border-b border-orange-400/20 flex-shrink-0">
+        <div className="px-5 py-4 border-b border-red-900/30 flex-shrink-0">
           <div className="flex justify-between items-start">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                <h2 className="text-base font-bold text-orange-400 tracking-wide">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="relative">
+                  <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                  <div className="absolute inset-0 w-3 h-3 rounded-full bg-red-500 animate-ping opacity-40" />
+                </div>
+                <h2 className="text-lg font-bold text-red-400 tracking-tight">
                   {activeFireInfo?.town || 'Localização'}
                 </h2>
               </div>
               {activeFireInfo?.status && (
-                <span className="text-xs font-mono text-white/50 uppercase tracking-wider">
+                <span className="text-[11px] font-semibold text-red-400/60 uppercase tracking-widest">
                   {activeFireInfo.status}
                 </span>
               )}
             </div>
             <button
               onClick={resetSimulation}
-              className="text-white/40 hover:text-white text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-white/10 transition"
+              className="text-white/30 hover:text-white text-sm w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 transition"
             >
               ✕
             </button>
@@ -88,38 +91,38 @@ export default function FireDetailsPanel() {
           {/* Recursos */}
           {activeFireInfo && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-2">Recursos no Terreno</p>
-              <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-white/60">Bombeiros</span>
-                  <span className="font-mono text-xl font-bold text-orange-300">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30 mb-3">Recursos no Terreno</p>
+              <div className="rounded-xl p-4 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm font-medium text-white/50">Bombeiros</span>
+                  <span className="font-mono text-2xl font-bold text-red-400">
                     {activeFireInfo.man || '—'}
                   </span>
                 </div>
                 {activeFireInfo.terrain && (
-                  <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
-                    <span className="text-xs text-white/40">Terreno</span>
-                    <span className="font-mono text-xs text-white/60">{activeFireInfo.terrain}</span>
+                  <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+                    <span className="text-xs text-white/30">Terreno</span>
+                    <span className="font-mono text-xs text-white/50">{activeFireInfo.terrain}</span>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Dados Ambientais (GEE + OWM) */}
+          {/* Dados Ambientais */}
           {environmental_data && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-2">Dados Ambientais</p>
-              <div className="grid grid-cols-2 gap-2">
-                <EnvCard label="Temperatura" value={`${environmental_data.temperature_c?.toFixed(1) || '—'}°C`} color="text-red-400" />
-                <EnvCard label="Humidade" value={`${environmental_data.humidity_pct?.toFixed(0) || '—'}%`} color="text-cyan-400" />
-                <EnvCard label="Vento" value={`${environmental_data.wind_speed_kmh?.toFixed(1) || '—'} km/h`} color="text-orange-400" />
-                <EnvCard label="Combustível" value={(environmental_data.fuel_load_mean?.toFixed(2)) || '—'} color="text-green-400" />
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30 mb-3">Dados Ambientais</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <EnvCard label="Temperatura" value={`${environmental_data.temperature_c?.toFixed(1) || '—'}°C`} icon="🌡" accent="red" />
+                <EnvCard label="Humidade" value={`${environmental_data.humidity_pct?.toFixed(0) || '—'}%`} icon="💧" accent="cyan" />
+                <EnvCard label="Vento" value={`${environmental_data.wind_speed_kmh?.toFixed(1) || '—'}`} unit="km/h" icon="💨" accent="amber" />
+                <EnvCard label="Combustível" value={environmental_data.fuel_load_mean?.toFixed(2) || '—'} icon="🌿" accent="green" />
               </div>
               {environmental_data.ndvi_mean !== undefined && (
-                <div className="mt-2 bg-white/[0.03] rounded p-2 border border-white/5 flex items-center justify-between">
-                  <span className="text-xs text-white/40">NDVI (vegetação)</span>
-                  <span className="font-mono text-xs text-green-400">{environmental_data.ndvi_mean.toFixed(3)}</span>
+                <div className="mt-2.5 rounded-lg p-2.5 border border-white/5 bg-white/[0.01] flex items-center justify-between">
+                  <span className="text-xs text-white/30">NDVI (vegetação)</span>
+                  <span className="font-mono text-xs text-green-400/80">{environmental_data.ndvi_mean.toFixed(3)}</span>
                 </div>
               )}
             </div>
@@ -128,70 +131,63 @@ export default function FireDetailsPanel() {
           {/* Vetores de Propagação */}
           {vectors && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-2">Propagação</p>
-              <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/50">Direção do Fogo</span>
-                  <span className="font-mono text-sm text-orange-300 font-bold">
-                    {spreadAngle?.toFixed(1)}° {spreadCompass && <span className="text-orange-400/60">({spreadCompass})</span>}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/50">Dir. do Vento (FROM)</span>
-                  <span className="font-mono text-sm text-white/60">
-                    {windAngle?.toFixed(1)}° {windCompass && <span className="text-white/40">({windCompass})</span>}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/50">Vel. Propagação</span>
-                  <span className="font-mono text-sm text-red-400 font-bold">
-                    {vectors.speed_m_per_min?.toFixed(1)} m/min
-                  </span>
-                </div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30 mb-3">Propagação</p>
+              <div className="rounded-xl p-4 border border-red-500/10 bg-gradient-to-br from-red-500/[0.03] to-transparent space-y-3">
+                <VectorRow label="Direção do Fogo" value={`${spreadAngle?.toFixed(1)}°`} sub={spreadCompass} color="text-red-400" />
+                <div className="h-px bg-gradient-to-r from-red-500/10 via-white/5 to-transparent" />
+                <VectorRow label="Dir. do Vento (FROM)" value={`${windAngle?.toFixed(1)}°`} sub={windCompass} color="text-white/60" />
+                <div className="h-px bg-gradient-to-r from-red-500/10 via-white/5 to-transparent" />
+                <VectorRow label="Vel. Propagação" value={`${vectors.speed_m_per_min?.toFixed(1)}`} sub="m/min" color="text-red-300" bold />
               </div>
             </div>
           )}
 
           {/* Divisor */}
-          <div className="border-t border-white/5" />
+          <div className="h-px bg-gradient-to-r from-transparent via-white/5 to-transparent" />
 
           {/* Info da Simulação */}
           {metadata && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-2">Motor</p>
-              <div className="bg-white/[0.03] rounded p-2 border border-white/5 flex items-center justify-between">
-                <span className="text-xs text-white/40">Engine</span>
-                <span className="font-mono text-xs text-white/60">{metadata.engine || source}</span>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30 mb-3">Motor</p>
+              <div className="rounded-lg p-2.5 border border-white/5 bg-white/[0.01] flex items-center justify-between">
+                <span className="text-xs text-white/30">Engine</span>
+                <span className="font-mono text-xs text-white/40">{metadata.engine || source}</span>
               </div>
             </div>
           )}
 
-          {/* Área Queimada (último timestep visível) */}
+          {/* Área Queimada */}
           {currentTs && totalArea > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-2">Área Queimada (T+{currentTs.minutes_elapsed}min)</p>
-              <div className="bg-orange-400/5 rounded-lg p-4 border border-orange-400/20 text-center">
-                <div className="font-mono text-3xl font-bold text-orange-300">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30 mb-3">Área Queimada</p>
+              <div className="rounded-xl p-5 border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] to-transparent text-center">
+                <div className="font-mono text-4xl font-bold text-red-400 leading-none">
                   {totalArea.toFixed(2)}
                 </div>
-                <div className="text-xs text-white/40 mt-1">km²</div>
+                <div className="text-xs text-white/30 mt-2 font-medium">km² · T+{currentTs.minutes_elapsed}min</div>
               </div>
             </div>
           )}
 
           {/* Coordenadas */}
           <div>
-            <p className="text-[10px] uppercase tracking-[0.3em] text-white/40 mb-2">Coordenadas</p>
-            <div className="bg-white/[0.03] rounded p-2 border border-white/5 font-mono text-xs text-cyan-300/70 space-y-0.5">
-              <div>Lat: {centerLat.toFixed(5)}°</div>
-              <div>Lon: {centerLon.toFixed(5)}°</div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/30 mb-3">Coordenadas</p>
+            <div className="rounded-lg p-3 border border-white/5 bg-white/[0.01] font-mono text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-white/25">Lat</span>
+                <span className="text-cyan-300/60">{centerLat.toFixed(5)}°</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/25">Lon</span>
+                <span className="text-cyan-300/60">{centerLon.toFixed(5)}°</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-white/5 flex-shrink-0">
-          <p className="text-[10px] text-white/30 text-center font-mono tracking-wider">
+          <p className="text-[10px] text-white/20 text-center font-semibold tracking-[0.25em]">
             FIRELYTICS · ROTEAMENTO TÁTICO
           </p>
         </div>
@@ -200,11 +196,33 @@ export default function FireDetailsPanel() {
   )
 }
 
-function EnvCard({ label, value, color }) {
+function EnvCard({ label, value, unit, icon, accent }) {
+  const accentMap = {
+    red: 'text-red-400',
+    cyan: 'text-cyan-400',
+    amber: 'text-amber-400',
+    green: 'text-green-400',
+  }
   return (
-    <div className="bg-white/[0.03] rounded p-2.5 border border-white/5">
-      <div className="text-[10px] text-white/40 mb-0.5">{label}</div>
-      <div className={`font-mono text-sm font-bold ${color}`}>{value}</div>
+    <div className="rounded-xl p-3 border border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-xs opacity-40">{icon}</span>
+        <span className="text-[10px] text-white/35 font-medium">{label}</span>
+      </div>
+      <div className={`font-mono text-base font-bold leading-none ${accentMap[accent] || 'text-white/70'}`}>
+        {value}{unit && <span className="text-xs opacity-50 ml-0.5 font-normal">{unit}</span>}
+      </div>
+    </div>
+  )
+}
+
+function VectorRow({ label, value, sub, color, bold }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-white/40">{label}</span>
+      <span className={`font-mono text-sm ${bold ? 'font-bold' : 'font-medium'} ${color}`}>
+        {value}{sub && <span className="text-xs opacity-40 ml-1">({sub})</span>}
+      </span>
     </div>
   )
 }

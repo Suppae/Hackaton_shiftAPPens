@@ -7,21 +7,18 @@ export default function LayersToggle() {
   const showCompass = useStore((s) => s.showCompass)
   const showWindHUD = useStore((s) => s.showWindHUD)
   const showTimeSlider = useStore((s) => s.showTimeSlider)
-  const showRoutePanel = useStore((s) => s.showRoutePanel)
   const showLegend = useStore((s) => s.showLegend)
 
   const setShowCompass = useStore((s) => s.setShowCompass)
   const setShowWindHUD = useStore((s) => s.setShowWindHUD)
   const setShowTimeSlider = useStore((s) => s.setShowTimeSlider)
-  const setShowRoutePanel = useStore((s) => s.setShowRoutePanel)
   const setShowLegend = useStore((s) => s.setShowLegend)
 
   const toggles = [
-    { label: 'Bussola', value: showCompass, onChange: setShowCompass },
+    { label: 'Bússola', value: showCompass, onChange: setShowCompass },
     { label: 'Vento', value: showWindHUD, onChange: setShowWindHUD },
-    { label: 'Wildfire Routing', value: showRoutePanel, onChange: setShowRoutePanel },
     { label: 'Intensidade', value: showLegend, onChange: setShowLegend },
-    { label: 'Previsão Cronológica', value: showTimeSlider, onChange: setShowTimeSlider },
+    { label: 'Previsão', value: showTimeSlider, onChange: setShowTimeSlider },
   ]
 
   return (
@@ -29,18 +26,19 @@ export default function LayersToggle() {
       position: 'absolute',
       bottom: 20,
       right: 20,
-      background: '#000',
+      background: 'rgba(0,0,0,0.7)',
+      backdropFilter: 'blur(12px)',
       padding: isOpen ? '12px 14px' : '12px',
-      borderRadius: '6px',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
+      borderRadius: '12px',
+      border: '1px solid rgba(255,255,255,0.06)',
       zIndex: 5,
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontFamily: "'Manrope', system-ui, sans-serif",
       display: 'flex',
       alignItems: 'flex-start',
       gap: '10px',
     }}>
       {isOpen && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {toggles.map((toggle) => (
             <label
               key={toggle.label}
@@ -58,16 +56,17 @@ export default function LayersToggle() {
                 onChange={(e) => toggle.onChange(e.target.checked)}
                 style={{
                   cursor: 'pointer',
-                  width: 18,
-                  height: 18,
-                  accentColor: '#ff8c1a',
+                  width: 16,
+                  height: 16,
+                  accentColor: '#ef4444',
                   flexShrink: 0,
+                  borderRadius: '4px',
                 }}
               />
               <span style={{
                 fontSize: 13,
-                color: '#fff',
-                fontWeight: 400,
+                color: 'rgba(255,255,255,0.65)',
+                fontWeight: 500,
               }}>
                 {toggle.label}
               </span>
@@ -81,7 +80,7 @@ export default function LayersToggle() {
         style={{
           background: 'none',
           border: 'none',
-          color: '#ff8c1a',
+          color: '#ef4444',
           cursor: 'pointer',
           fontSize: '18px',
           padding: '0',

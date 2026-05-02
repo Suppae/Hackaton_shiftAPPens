@@ -14,7 +14,7 @@ const fillColor = [
   ...FIRE_COLORS.flat(),
 ]
 
-function buildFrontArrows(fireFeature, fireDirection, maxArrows = 5) {
+function buildFrontArrows(fireFeature, fireDirection) {
   const ring = fireFeature.geometry.coordinates[0]
   const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length
   const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length
@@ -30,7 +30,8 @@ function buildFrontArrows(fireFeature, fireDirection, maxArrows = 5) {
 
   if (!front.length) return { type: 'FeatureCollection', features: [] }
 
-  const step = Math.max(1, Math.floor(front.length / maxArrows))
+  const targetArrows = 18
+  const step = Math.max(1, Math.floor(front.length / targetArrows))
   const features = []
 
   for (let i = 0; i < front.length; i += step) {
@@ -38,14 +39,36 @@ function buildFrontArrows(fireFeature, fireDirection, maxArrows = 5) {
     const dx = pt[0] - cx
     const dy = pt[1] - cy
     const len = Math.sqrt(dx * dx + dy * dy) || 0.001
-    const offset = 0.004
+
+    const offsetOuter = 0.008
+    const offsetInner = 0.0045
+    const offsetMid = 0.006
+
     features.push({
       type: 'Feature',
       geometry: {
         type: 'Point',
-        coordinates: [pt[0] + (dx / len) * offset, pt[1] + (dy / len) * offset],
+        coordinates: [pt[0] + (dx / len) * offsetOuter, pt[1] + (dy / len) * offsetOuter],
       },
-      properties: {},
+      properties: { size: 'lg' },
+    })
+
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [pt[0] + (dx / len) * offsetInner, pt[1] + (dy / len) * offsetInner],
+      },
+      properties: { size: 'sm' },
+    })
+
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [pt[0] + (dx / len) * offsetMid, pt[1] + (dy / len) * offsetMid],
+      },
+      properties: { size: 'md' },
     })
   }
 
@@ -118,30 +141,34 @@ export default function FireLayer() {
     }
   }, [map, timesteps, setSelectedFire])
 
-  // Use vectors.primary_spread_angle from backend if available, fallback to metadata
   const fireDirection = vectors
     ? vectors.primary_spread_angle
     : metadata
       ? (metadata.wind_direction_deg + 180) % 360
       : 0
 
-  // ➤ naturally points East (90°). To point in fireDirection: rotate by (fireDirection - 90)
   const arrowRotation = (fireDirection - 90 + 360) % 360
 
+  const activeTs = currentStep > 0
+    ? timesteps[currentStep - 1]
+    : timesteps.length > 0
+      ? timesteps[0]
+      : null
+
   const arrowGeoJSON = useMemo(() => {
-    if (!timesteps.length || currentStep === 0) return null
-    return buildFrontArrows(timesteps[currentStep - 1].burned_area, fireDirection)
-  }, [timesteps, currentStep, fireDirection])
+    if (!activeTs) return null
+    return buildFrontArrows(activeTs.burned_area, fireDirection)
+  }, [activeTs, fireDirection])
 
   if (!timesteps.length) return null
 
   return (
     <>
       {timesteps.map((step, i) => {
-        const visible = i < currentStep
-        const ratio = visible ? (i + 1) / currentStep : 0
+        const visible = i < currentStep || currentStep === 0
+        const ratio = currentStep > 0 ? (i + 1) / currentStep : (i + 1) / timesteps.length
         const fillOpacity = visible ? 0.25 + 0.55 * ratio : 0
-        const isLatest = visible && i === currentStep - 1
+        const isLatest = visible && (currentStep === 0 ? i === timesteps.length - 1 : i === currentStep - 1)
 
         return (
           <Source key={`fire-src-${i}`} id={`fire-src-${i}`} type="geojson" data={step.burned_area}>
@@ -150,7 +177,7 @@ export default function FireLayer() {
               type="fill"
               paint={{
                 'fill-color': fillColor,
-                'fill-opacity': fillOpacity,
+                'fill-opacity': currentStep > 0 ? fillOpacity : (0.15 + 0.1 * ratio),
               }}
             />
             <Layer
@@ -167,25 +194,66 @@ export default function FireLayer() {
         )
       })}
 
-      {arrowGeoJSON && currentStep > 0 && (
-        <Source id="fire-arrows" type="geojson" data={arrowGeoJSON}>
+      {arrowGeoJSON && arrowGeoJSON.features.length > 0 && (
+        <Source id="fire-arrows-outer" type="geojson" data={arrowGeoJSON}>
           <Layer
-            id="fire-arrows-layer"
+            id="fire-arrows-outer-layer"
             type="symbol"
+            filter={['==', ['get', 'size'], 'lg']}
             layout={{
               'text-field': '➤',
-              'text-size': 22,
+              'text-size': 26,
               'text-rotate': arrowRotation,
               'text-rotation-alignment': 'map',
               'text-allow-overlap': true,
               'text-ignore-placement': true,
-              'text-pitch-alignment': 'map'
+              'text-pitch-alignment': 'map',
             }}
             paint={{
-              'text-color': '#ff8c1a',
-              'text-halo-color': '#1a0800',
-              'text-halo-width': 2,
+              'text-color': '#ef4444',
+              'text-halo-color': '#0a0000',
+              'text-halo-width': 4,
               'text-opacity': glowOpacity,
+            }}
+          />
+          <Layer
+            id="fire-arrows-mid-layer"
+            type="symbol"
+            filter={['==', ['get', 'size'], 'md']}
+            layout={{
+              'text-field': '➤',
+              'text-size': 20,
+              'text-rotate': arrowRotation,
+              'text-rotation-alignment': 'map',
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+              'text-pitch-alignment': 'map',
+            }}
+            paint={{
+              'text-color': '#dc2626',
+              'text-halo-color': '#0a0000',
+              'text-halo-width': 3,
+              'text-opacity': glowOpacity * 0.9,
+            }}
+          />
+          <Layer
+            id="fire-arrows-inner-layer"
+            type="symbol"
+            filter={['==', ['get', 'size'], 'sm']}
+            layout={{
+              'text-field': '▸',
+              'text-size': 16,
+              'text-rotate': arrowRotation,
+              'text-rotation-alignment': 'map',
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+              'text-pitch-alignment': 'map',
+            }}
+            paint={{
+              'text-color': '#b91c1c',
+              'text-halo-color': '#0a0000',
+              'text-halo-width': 2,
+              'text-opacity': glowOpacity * 0.75,
             }}
           />
         </Source>

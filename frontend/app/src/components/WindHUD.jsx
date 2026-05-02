@@ -21,7 +21,6 @@ export default function WindHUD() {
     return () => clearInterval(id)
   }, [])
 
-  // Prefer new simulation fields, fallback to legacy metadata
   const windSpeedMs = metadata?.wind_speed_ms
   const windDirDeg = vectors?.wind_angle ?? metadata?.wind_direction_deg
   const humidity = environmental_data?.humidity_pct ?? metadata?.humidity_pct
@@ -33,41 +32,41 @@ export default function WindHUD() {
 
   return (
     <div className="absolute top-4 right-4 z-10">
-      <div className="bg-black/70 backdrop-blur-md rounded-xl p-4 border border-white/10 flex flex-col items-center gap-2"
+      <div className="rounded-xl p-4 border border-white/5 bg-black/70 backdrop-blur-md flex flex-col items-center gap-2.5"
         style={{ minWidth: 120 }}>
-        <div className="text-xs font-mono text-white/50 tracking-widest uppercase">Vento</div>
+        <div className="text-[11px] font-semibold text-white/40 tracking-[0.2em] uppercase">Vento</div>
 
         <div style={{ transform: `rotate(${rotation}deg)`, transition: 'transform 0.5s ease-out' }}>
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <line x1="24" y1="44" x2="24" y2="8" stroke="#ff8c1a" strokeWidth="2.5" strokeLinecap="round"/>
+            <line x1="24" y1="44" x2="24" y2="8" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
             <polygon
               points="24,4 19,14 29,14"
-              fill="#ff8c1a"
+              fill="#ef4444"
               opacity={pulse}
-              style={{ filter: `drop-shadow(0 0 4px #ff8c1a)` }}
+              style={{ filter: `drop-shadow(0 0 4px #ef4444)` }}
             />
-            <circle cx="24" cy="44" r="3" fill="#ff8c1a" opacity="0.5"/>
+            <circle cx="24" cy="44" r="3" fill="#ef4444" opacity="0.5"/>
           </svg>
         </div>
 
         <div className="text-center">
           <div className="font-mono text-lg text-white font-bold leading-tight">
-            {windSpeedMs?.toFixed(1) ?? '—'} <span className="text-xs text-white/60">m/s</span>
+            {windSpeedMs?.toFixed(1) ?? '—'} <span className="text-xs text-white/50">m/s</span>
           </div>
-          <div className="font-mono text-sm text-orange-400 font-semibold">{compass}</div>
+          <div className="font-mono text-sm text-red-400 font-semibold">{compass}</div>
         </div>
 
-        <div className="border-t border-white/10 w-full pt-2 text-center">
-          <div className="font-mono text-xs text-white/60">Humidade</div>
-          <div className="font-mono text-sm text-cyan-400 font-semibold">
+        <div className="border-t border-white/5 w-full pt-2 text-center">
+          <div className="text-[10px] text-white/35 font-medium">Humidade</div>
+          <div className="font-mono text-sm text-cyan-400/80 font-semibold">
             {humidity !== undefined ? `${humidity}%` : '—'}
           </div>
         </div>
 
         {vectors && (
-          <div className="border-t border-white/10 w-full pt-2 text-center">
-            <div className="font-mono text-xs text-white/60">Propagação</div>
-            <div className="font-mono text-sm text-red-400 font-semibold">
+          <div className="border-t border-white/5 w-full pt-2 text-center">
+            <div className="text-[10px] text-white/35 font-medium">Propagação</div>
+            <div className="font-mono text-sm text-red-400/90 font-semibold">
               {vectors.speed_m_per_min?.toFixed(1)} m/min
             </div>
           </div>

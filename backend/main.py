@@ -10,6 +10,7 @@ Endpoints:
     GET  /simulate/demo -> hardcoded Serra da Estrela scenario for live demo
 """
 
+import math
 import os
 from datetime import datetime
 from enum import Enum
@@ -159,26 +160,40 @@ def _run_simulation(
     source: str = "manual",
 ) -> SimulationResponse:
 
-    if engine == "ca":
-        # ── Build weather snapshot ────────────────────────────────────────
-        weather: Optional[WeatherSnapshot] = None
-        if wind_speed_ms is not None and wind_direction_deg is not None and humidity_pct is not None:
-            weather = WeatherSnapshot(
-                wind_speed_ms=wind_speed_ms,
-                wind_direction_deg=wind_direction_deg,
-                humidity_pct=humidity_pct,
-                temperature_c=25.0,
-                source="override",
-            )
-        elif any(v is not None for v in [wind_speed_ms, wind_direction_deg, humidity_pct]):
-            weather = get_weather(ignition_lat, ignition_lon)
-            if wind_speed_ms is not None:
-                weather.wind_speed_ms = wind_speed_ms
-            if wind_direction_deg is not None:
-                weather.wind_direction_deg = wind_direction_deg
-            if humidity_pct is not None:
-                weather.humidity_pct = humidity_pct
+    # ── 1. FETCH WEATHER REAL (sempre — independente do motor) ─────────
+    if wind_speed_ms is not None and wind_direction_deg is not None and humidity_pct is not None:
+        weather = WeatherSnapshot(
+            wind_speed_ms=wind_speed_ms,
+            wind_direction_deg=wind_direction_deg,
+            humidity_pct=humidity_pct,
+            temperature_c=25.0,
+            source="override",
+        )
+    else:
+        weather = get_weather(ignition_lat, ignition_lon)
+        if wind_speed_ms is not None:
+            weather.wind_speed_ms = wind_speed_ms
+        if wind_direction_deg is not None:
+            weather.wind_direction_deg = wind_direction_deg
+        if humidity_pct is not None:
+            weather.humidity_pct = humidity_pct
 
+    # ── 2. FETCH ELEVATION REAL (sempre que use_topo=True) ─────────────
+    if use_topo and engine == "mock":
+        from topo_client import fetch_elevations as _fetch_topo
+        half = 40 // 2
+        dlat = 120.0 / 111_320.0
+        dlon = 120.0 / (111_320.0 * math.cos(math.radians(ignition_lat)))
+        points = [(ignition_lat, ignition_lon),
+                   (ignition_lat + dlat, ignition_lon)]
+        elevs = _fetch_topo(points)
+        if elevs[0] is not None and elevs[1] is not None:
+            dz = elevs[1] - elevs[0]
+            slope_pct = dz / 120.0
+            weather.temperature_c += slope_pct * 2
+            print(f"[main] Elevation at ignition: {elevs[0]:.0f}m (slope: {slope_pct:.3f})")
+
+    if engine == "ca":
         # ── Fetch GEE satellite data (optional) ──────────────────────────
         gee_layers = None
         gee_provider = _get_gee_provider()
@@ -203,12 +218,9 @@ def _run_simulation(
                 gee_layers=gee_layers,
             )
             actual_engine = "ca" + ("+gee" if gee_layers is not None else "")
-            if weather is None:
-                weather = get_weather(ignition_lat, ignition_lon)
 
         except Exception as exc:
             print(f"[main] CA engine failed: {exc!r} — falling back to mock")
-            weather = weather or get_weather(ignition_lat, ignition_lon)
             raw_timesteps = mock_fire(
                 ignition_lon=ignition_lon,
                 ignition_lat=ignition_lat,
@@ -227,30 +239,23 @@ def _run_simulation(
                 "ndvi_mean": 0.5,
                 "bbox_polygon": compute_bbox_polygon(ignition_lon, ignition_lat, 40, 120.0),
             }
-            actual_engine = "mock(fallback)"
+            actual_engine = "mock(fallback from ca)"
 
     else:
-        ws = wind_speed_ms if wind_speed_ms is not None else 5.0
-        wd = wind_direction_deg if wind_direction_deg is not None else 270.0
-        hm = humidity_pct if humidity_pct is not None else 35.0
-        weather = WeatherSnapshot(
-            wind_speed_ms=ws, wind_direction_deg=wd, humidity_pct=hm,
-            temperature_c=25.0, source="mock-default",
-        )
         raw_timesteps = mock_fire(
             ignition_lon=ignition_lon,
             ignition_lat=ignition_lat,
-            wind_speed_ms=ws,
-            wind_direction_deg=wd,
-            humidity_pct=hm,
+            wind_speed_ms=weather.wind_speed_ms,
+            wind_direction_deg=weather.wind_direction_deg,
+            humidity_pct=weather.humidity_pct,
             n_steps=n_steps,
             minutes_per_step=minutes_per_step,
         )
         result = {
             "timesteps": raw_timesteps,
-            "primary_spread_angle": round(_wind_spread_bearing(wd), 1),
-            "wind_angle": round(wd, 1),
-            "speed_m_per_min": round(max(1.0, ws * 0.03 * 60.0), 2),
+            "primary_spread_angle": round(_wind_spread_bearing(weather.wind_direction_deg), 1),
+            "wind_angle": round(weather.wind_direction_deg, 1),
+            "speed_m_per_min": round(max(1.0, weather.wind_speed_ms * 0.03 * 60.0), 2),
             "fuel_load_mean": 0.42,
             "ndvi_mean": 0.5,
             "bbox_polygon": compute_bbox_polygon(ignition_lon, ignition_lat, 40, 120.0),
