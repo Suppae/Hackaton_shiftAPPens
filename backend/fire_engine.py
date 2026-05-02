@@ -12,21 +12,24 @@ The probability of ignition depends on:
     P_spread = P_base × Φ_W(θ) × Φ_S × η_M
 
 Where:
-    P_base  = base spread probability per step (~0.4)
+    P_base  = fuel[nr][nc] × ndvi[nr][nc] × (1 − ndmi[nr][nc])
+              when GEE satellite data is available; falls back to 0.42
     Φ_W(θ)  = wind factor, elliptical, based on cos(θ) between wind
               vector and the direction from cell to neighbour
     Φ_S     = slope factor from topo_client (fire accelerates uphill)
     η_M     = moisture damping factor, exponential decay with humidity
 
 The grid is geo-referenced: each cell maps to real lat/lon coordinates.
-Output is a sequence of GeoJSON Polygon Features (convex hull of all
-burning + burned cells at each timestep).
+Output is a dict containing a sequence of GeoJSON Polygon Features plus
+directional vector metadata for the frontend.
 """
 
 import math
 import random
 import time
 from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 from weather_client import WeatherSnapshot, get_weather, _fallback_snapshot
 from topo_client import fetch_elevations, compute_slope_factor
@@ -67,10 +70,8 @@ def _direction_angle(dr: int, dc: int) -> float:
     at grid offset (dr, dc). dr>0 = South in our grid (row increases
     southward), dc>0 = East.
     """
-    # Grid: row increases = latitude decreases (south)
-    # So dy in "math" coords = -dr (north is positive y)
     dx = float(dc)
-    dy = float(-dr)
+    dy = float(-dr)  # row↑ = north in math coords
     return math.atan2(dy, dx)
 
 
@@ -119,7 +120,6 @@ def _convex_hull(points: List[Tuple[float, float]]) -> List[List[float]]:
     Returns closed ring as [[lon, lat], ...] suitable for GeoJSON Polygon.
     """
     if len(points) < 3:
-        # Degenerate: return a tiny triangle around the points
         if not points:
             return []
         cx = sum(p[0] for p in points) / len(points)
@@ -133,7 +133,6 @@ def _convex_hull(points: List[Tuple[float, float]]) -> List[List[float]]:
             [cx - eps, cy - eps],
         ]
 
-    # Graham scan
     pts = sorted(set(points))
 
     def cross(O, A, B):
@@ -152,10 +151,100 @@ def _convex_hull(points: List[Tuple[float, float]]) -> List[List[float]]:
         upper.append(p)
 
     hull = lower[:-1] + upper[:-1]
-    # Close the ring and convert to [lon, lat] lists
     ring = [[p[0], p[1]] for p in hull]
-    ring.append(ring[0])  # close
+    ring.append(ring[0])
     return ring
+
+
+def _resize_array(arr: np.ndarray, target_size: int) -> np.ndarray:
+    """Resize a 2D array to target_size × target_size."""
+    h, w = arr.shape
+    try:
+        from scipy.ndimage import zoom
+        return zoom(arr, (target_size / h, target_size / w))
+    except ImportError:
+        yi = np.round(np.linspace(0, h - 1, target_size)).astype(int).clip(0, h - 1)
+        xi = np.round(np.linspace(0, w - 1, target_size)).astype(int).clip(0, w - 1)
+        return arr[np.ix_(yi, xi)]
+
+
+def compute_bbox_polygon(
+    ignition_lon: float,
+    ignition_lat: float,
+    grid_size: int,
+    cell_size_m: float,
+) -> List[List[float]]:
+    """
+    Returns the bounding-box polygon of the simulation grid as a closed
+    ring of [lon, lat] pairs (GeoJSON-ready, without closing duplicate).
+    """
+    half = grid_size // 2
+    dlat = (half * cell_size_m) / _M_PER_DEG_LAT
+    dlon = (half * cell_size_m) / _m_per_deg_lon(ignition_lat)
+    min_lon, max_lon = ignition_lon - dlon, ignition_lon + dlon
+    min_lat, max_lat = ignition_lat - dlat, ignition_lat + dlat
+    return [
+        [min_lon, min_lat],
+        [max_lon, min_lat],
+        [max_lon, max_lat],
+        [min_lon, max_lat],
+    ]
+
+
+def _compute_spread_vector(
+    weather: WeatherSnapshot,
+    wind_math_rad: float,
+    ignition_r: int,
+    ignition_c: int,
+    grid_size: int,
+    elevations: List[List[Optional[float]]],
+    cell_size_m: float,
+) -> Tuple[float, float]:
+    """
+    Returns (primary_spread_angle_deg, speed_m_per_min).
+
+    primary_spread_angle: geographic bearing (0=N, 90=E, CW) of the dominant
+    fire spread direction — resultant of wind vector and steepest uphill
+    slope at the ignition point.
+    """
+    ws = weather.wind_speed_ms
+
+    # Wind vector in math coords (CCW from East)
+    wx = ws * math.cos(wind_math_rad)
+    wy = ws * math.sin(wind_math_rad)
+
+    # Slope vector: steepest uphill neighbour at ignition
+    sx, sy = 0.0, 0.0
+    ign_elev = elevations[ignition_r][ignition_c]
+    if ign_elev is not None:
+        best_slope = 0.0
+        for dr, dc in NEIGHBOURS:
+            nr, nc = ignition_r + dr, ignition_c + dc
+            if 0 <= nr < grid_size and 0 <= nc < grid_size:
+                nbr_elev = elevations[nr][nc]
+                if nbr_elev is not None:
+                    rise = nbr_elev - ign_elev
+                    if rise > 0:
+                        dist_m = math.sqrt(dr * dr + dc * dc) * cell_size_m
+                        slope_pct = rise / dist_m
+                        if slope_pct > best_slope:
+                            best_slope = slope_pct
+                            angle_rad = _direction_angle(dr, dc)
+                            slope_mag = min(slope_pct * 200.0, ws)
+                            sx = slope_mag * math.cos(angle_rad)
+                            sy = slope_mag * math.sin(angle_rad)
+
+    # Combine: wind dominates, slope nudges
+    cx = wx + 0.3 * sx
+    cy = wy + 0.3 * sy
+
+    # Math angle (CCW from E) → geographic bearing (CW from N)
+    primary_angle = (90.0 - math.degrees(math.atan2(cy, cx))) % 360.0
+
+    # Rough fire spread speed: ~3 % of wind speed (m/s) → m/min
+    speed_m_per_min = max(1.0, ws * 0.03 * 60.0)
+
+    return primary_angle, speed_m_per_min
 
 
 def simulate(
@@ -168,7 +257,8 @@ def simulate(
     cell_size_m: float = 120.0,
     use_topo: bool = True,
     seed: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+    gee_layers: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Run the Cellular Automaton fire simulation.
 
@@ -181,9 +271,20 @@ def simulate(
         cell_size_m: side length of each cell in meters
         use_topo: whether to fetch real elevation data (False = assume flat)
         seed: random seed for reproducibility (None = random)
+        gee_layers: dict with numpy arrays {"fuel", "ndvi", "ndmi", "lai"}.
+                    If provided, replaces the static P_base = 0.42 with a
+                    per-cell dynamic value.  Falls back to 0.42 if absent
+                    or malformed.
 
     Returns:
-        List of timestep dicts, same shape as mock_engine output.
+        Dict with keys:
+            timesteps         – list of GeoJSON-bearing dicts (existing shape)
+            primary_spread_angle – dominant spread bearing (°, 0=N CW)
+            wind_angle           – met wind direction (FROM, °)
+            speed_m_per_min      – estimated fire speed
+            fuel_load_mean       – mean fuel load from GEE (or 0.42 fallback)
+            ndvi_mean            – mean NDVI from GEE (or 0.5 fallback)
+            bbox_polygon         – grid bounding-box [[lon,lat], …]
     """
     if seed is not None:
         random.seed(seed)
@@ -195,23 +296,43 @@ def simulate(
     wind_math_rad = _meteo_to_math_rad(weather.wind_direction_deg)
     eta_m = _moisture_damping(weather.humidity_pct)
 
-    # Base probability tuned so fire visibly grows but doesn't explode
-    P_base = 0.42
+    # ── Bounding box ─────────────────────────────────────────────────────
+    bbox_polygon = compute_bbox_polygon(ignition_lon, ignition_lat, grid_size, cell_size_m)
+
+    # ── Resize GEE layers to grid_size × grid_size ───────────────────────
+    gee_fuel: Optional[np.ndarray] = None
+    gee_ndvi: Optional[np.ndarray] = None
+    gee_ndmi: Optional[np.ndarray] = None
+    fuel_load_mean = 0.42
+    ndvi_mean = 0.5
+
+    if gee_layers is not None:
+        try:
+            gee_fuel = _resize_array(np.asarray(gee_layers["fuel"], dtype=float), grid_size)
+            gee_ndvi = _resize_array(np.asarray(gee_layers["ndvi"], dtype=float), grid_size)
+            gee_ndmi = _resize_array(np.asarray(gee_layers["ndmi"], dtype=float), grid_size)
+            fuel_load_mean = float(np.mean(gee_fuel))
+            ndvi_mean = float(np.mean(gee_ndvi))
+            print(f"[fire_engine] GEE layers active — fuel_mean={fuel_load_mean:.3f} ndvi_mean={ndvi_mean:.3f}")
+        except Exception as exc:
+            print(f"[fire_engine] GEE resize failed: {exc!r} — falling back to static P_base=0.42")
+            gee_fuel = gee_ndvi = gee_ndmi = None
+
+    P_base_static = 0.42
 
     # ── Build geo-referenced grid ────────────────────────────────────────
-    # Grid center = ignition point. Row 0 = northernmost.
     half = grid_size // 2
     dlat_per_cell = cell_size_m / _M_PER_DEG_LAT
     dlon_per_cell = cell_size_m / _m_per_deg_lon(ignition_lat)
 
     def cell_to_lonlat(r: int, c: int) -> Tuple[float, float]:
         lon = ignition_lon + (c - half) * dlon_per_cell
-        lat = ignition_lat - (r - half) * dlat_per_cell  # row↑ = north
+        lat = ignition_lat - (r - half) * dlat_per_cell
         return (lon, lat)
 
     # ── Initialise grid ──────────────────────────────────────────────────
     grid = [[UNBURNED] * grid_size for _ in range(grid_size)]
-    grid[half][half] = BURNING  # ignition at center
+    grid[half][half] = BURNING
 
     # ── Pre-fetch elevations for entire grid (1 batched HTTP call) ───────
     elevations: List[List[Optional[float]]] = [
@@ -240,9 +361,13 @@ def simulate(
     neighbour_distances = {}
     for dr, dc in NEIGHBOURS:
         neighbour_angles[(dr, dc)] = _direction_angle(dr, dc)
-        # Diagonal distance is √2 × cell_size
         dist_factor = math.sqrt(dr * dr + dc * dc)
         neighbour_distances[(dr, dc)] = cell_size_m * dist_factor
+
+    # ── Primary spread direction (computed once, before the CA loop) ─────
+    primary_spread_angle, speed_m_per_min = _compute_spread_vector(
+        weather, wind_math_rad, half, half, grid_size, elevations, cell_size_m
+    )
 
     # ── Run simulation ───────────────────────────────────────────────────
     timesteps: List[Dict[str, Any]] = []
@@ -257,35 +382,42 @@ def simulate(
 
                 for dr, dc in NEIGHBOURS:
                     nr, nc = r + dr, c + dc
-                    if 0 <= nr < grid_size and 0 <= nc < grid_size:
-                        if grid[nr][nc] != UNBURNED:
-                            continue
+                    if not (0 <= nr < grid_size and 0 <= nc < grid_size):
+                        continue
+                    if grid[nr][nc] != UNBURNED:
+                        continue
 
-                        # Wind factor
-                        phi_w = _wind_factor(
-                            weather.wind_speed_ms,
-                            wind_math_rad,
-                            neighbour_angles[(dr, dc)],
-                        )
+                    # ── Dynamic P_base from GEE, or static fallback ──
+                    if gee_fuel is not None:
+                        fuel_v = float(gee_fuel[nr, nc])
+                        ndvi_v = float(gee_ndvi[nr, nc])
+                        ndmi_v = float(gee_ndmi[nr, nc])
+                        p_base = fuel_v * ndvi_v * (1.0 - max(0.0, ndmi_v))
+                        p_base = max(0.05, min(0.95, p_base))
+                    else:
+                        p_base = P_base_static
 
-                        # Slope factor (finite differences)
-                        phi_s = compute_slope_factor(
-                            elevations[r][c],
-                            elevations[nr][nc],
-                            neighbour_distances[(dr, dc)],
-                        )
+                    phi_w = _wind_factor(
+                        weather.wind_speed_ms,
+                        wind_math_rad,
+                        neighbour_angles[(dr, dc)],
+                    )
 
-                        # Spread probability
-                        p_spread = P_base * phi_w * phi_s * eta_m
+                    phi_s = compute_slope_factor(
+                        elevations[r][c],
+                        elevations[nr][nc],
+                        neighbour_distances[(dr, dc)],
+                    )
 
-                        # Diagonal penalty (fire has to travel further)
-                        if abs(dr) + abs(dc) == 2:
-                            p_spread *= 0.707  # 1/√2
+                    p_spread = p_base * phi_w * phi_s * eta_m
 
-                        p_spread = min(1.0, max(0.0, p_spread))
+                    if abs(dr) + abs(dc) == 2:
+                        p_spread *= 0.707  # diagonal penalty
 
-                        if random.random() < p_spread:
-                            new_burning.append((nr, nc))
+                    p_spread = min(1.0, max(0.0, p_spread))
+
+                    if random.random() < p_spread:
+                        new_burning.append((nr, nc))
 
         # Transition: current burning → burned out, new → burning
         for r in range(grid_size):
@@ -297,7 +429,6 @@ def simulate(
             grid[nr][nc] = BURNING
 
         # ── Build GeoJSON for this timestep ──────────────────────────────
-        # Collect all burning + burned cell centers for the convex hull
         fire_points: List[Tuple[float, float]] = []
         for r in range(grid_size):
             for c in range(grid_size):
@@ -305,12 +436,10 @@ def simulate(
                     fire_points.append(cell_to_lonlat(r, c))
 
         if not fire_points:
-            # Fire died — unlikely with reasonable params, but handle it
             continue
 
         hull = _convex_hull(fire_points)
 
-        # Area estimate: count of burned/burning cells × cell area
         n_fire_cells = len(fire_points)
         area_m2 = n_fire_cells * cell_size_m * cell_size_m
         area_km2 = area_m2 / 1_000_000.0
@@ -345,4 +474,12 @@ def simulate(
             "burned_area": feature,
         })
 
-    return timesteps
+    return {
+        "timesteps": timesteps,
+        "primary_spread_angle": round(primary_spread_angle, 1),
+        "wind_angle": round(weather.wind_direction_deg, 1),
+        "speed_m_per_min": round(speed_m_per_min, 2),
+        "fuel_load_mean": round(fuel_load_mean, 3),
+        "ndvi_mean": round(ndvi_mean, 3),
+        "bbox_polygon": bbox_polygon,
+    }
