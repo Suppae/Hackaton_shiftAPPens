@@ -327,45 +327,82 @@ def simulate(req: SimulationRequest) -> SimulationResponse:
 _PORTUGAL_BBOX = [[-9.5, 36.8], [-6.2, 36.8], [-6.2, 42.2], [-9.5, 42.2]]
 
 
+import urllib.request
+import json
+
+# ... (resto do teu código, imports, etc) ...
+
+import urllib.request
+import json
+
 @app.get("/active-fires")
-def active_fires(
-    hours_back: int = Query(24, ge=1, le=168, description="Temporal window in hours"),
-) -> Dict[str, Any]:
+def active_fires() -> Dict[str, Any]:
     """
-    Returns active fire points in Portugal from NASA VIIRS (GEE).
-    Each point includes lon, lat, FRP (Fire Radiative Power in MW) and confidence.
-    Requires GEE_API_KEY to be set; returns empty list otherwise.
+    Tenta ir buscar fogos reais. Se a rede falhar, 
+    usa um FALLBACK para a demo nunca crachar!
     """
-    if not os.environ.get("GEE_API_KEY", "").strip():
-        return {
-            "source": "nasa_viirs",
-            "gee_available": False,
-            "fire_points": [],
-            "hours_back": hours_back,
-            "message": "GEE_API_KEY not configured — set it to enable live fire detection",
-        }
-
     try:
-        from infrasctuture.fire_recognition.VIIRSFireDetectionProvider import VIIRSFireDetectionProvider
-        provider = VIIRSFireDetectionProvider()
-        result = provider.get_active_fires(_PORTUGAL_BBOX, hours_back=hours_back)
+        # Usamos o endpoint web mais estável
+        url = "https://api.fogos.pt/new/fires"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        
+        fires = data.get("data", [])
+        features = []
+        for fire in fires:
+            # Filtra apenas se tiver coordenadas válidas
+            if not fire.get("lng") or not fire.get("lat"):
+                continue
+                
+            features.append({
+                "type": "Feature",
+                "geometry": { "type": "Point", "coordinates": [fire["lng"], fire["lat"]] },
+                "properties": {
+                    "id": fire.get("id"),
+                    "town": fire.get("town"),
+                    "status": fire.get("status"),
+                    "man": fire.get("man"), # Bombeiros
+                    "terrain": fire.get("terrain")
+                }
+            })
+            
+        # Se a API estiver vazia de momento, forçamos o fallback para termos o que mostrar
+        if not features:
+            raise ValueError("Sem fogos ativos na API real no momento.")
+
         return {
-            "source": "nasa_viirs",
-            "gee_available": True,
-            "bbox": _PORTUGAL_BBOX,
-            **result,
+            "source": "fogos_pt",
+            "type": "FeatureCollection",
+            "features": features
         }
+
     except Exception as exc:
-        print(f"[main] VIIRS fetch failed: {exc!r}")
+        print(f"[main] Fogos.pt fetch failed: {exc!r}. ATIVANDO FALLBACK DE EMERGÊNCIA!")
+        
+        # O NOSSO SEGURO DE VIDA PARA A DEMO
         return {
-            "source": "nasa_viirs",
-            "gee_available": True,
-            "fire_points": [],
-            "hours_back": hours_back,
-            "error": str(exc),
+            "source": "mock_fallback",
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": { "type": "Point", "coordinates": [-8.4750, 40.8330] }, 
+                    "properties": { "id": "mock1", "town": "Oliveira de Azeméis", "status": "Em Curso", "man": 150 }
+                },
+                {
+                    "type": "Feature",
+                    "geometry": { "type": "Point", "coordinates": [-7.6167, 40.3217] }, 
+                    "properties": { "id": "mock2", "town": "Serra da Estrela", "status": "Em Curso", "man": 85 }
+                },
+                {
+                    "type": "Feature",
+                    "geometry": { "type": "Point", "coordinates": [-8.5530, 37.3140] }, 
+                    "properties": { "id": "mock3", "town": "Monchique", "status": "Em Curso", "man": 45 }
+                }
+            ]
         }
-
-
 # --------------------------------------------------------------------------- #
 # Diagnostic endpoints — test APIs in isolation                               #
 # --------------------------------------------------------------------------- #
