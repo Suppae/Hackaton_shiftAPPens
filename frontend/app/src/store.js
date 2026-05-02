@@ -22,6 +22,8 @@ const useStore = create((set) => ({
   showWindHUD: true,
   showLegend: true,
   showTimeSlider: true,
+  showRoutePanel: true,
+  showFireDetailsPanel: true,
 
   setSimulation: (data) => set({
     ignition: data.ignition,
@@ -52,6 +54,8 @@ const useStore = create((set) => ({
   setShowWindHUD: (v) => set({ showWindHUD: v }),
   setShowLegend: (v) => set({ showLegend: v }),
   setShowTimeSlider: (v) => set({ showTimeSlider: v }),
+  setShowRoutePanel: (v) => set({ showRoutePanel: v }),
+  setShowFireDetailsPanel: (v) => set({ showFireDetailsPanel: v }),
 
   resetReroute: () => set({ previousRoute: null, isRerouted: false }),
   setSelectedFire: (fire) => set({ selectedFire: fire }),
