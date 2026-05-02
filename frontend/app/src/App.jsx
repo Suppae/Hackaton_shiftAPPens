@@ -5,6 +5,8 @@ import TimeSlider from '@/components/TimeSlider'
 import WindHUD from '@/components/WindHUD'
 import Legend from '@/components/Legend'
 import CompassHUD from '@/components/CompassHUD'
+import FireDetailsPanel from '@/components/FireDetailsPanel'
+import VisibilityToggle from '@/components/VisibilityToggle'
 import useStore from '@/store'
 import { fetchDemo, fetchSimulation } from '@/api/backend'
 import { fetchRoute } from '@/api/mapbox'
@@ -12,6 +14,11 @@ import { routeIntersectsFire } from '@/utils/geometry'
 
 export default function App() {
   const mapRef = useRef()
+  const selectedFire = useStore((s) => s.selectedFire)
+  const showCompass = useStore((s) => s.showCompass)
+  const showWindHUD = useStore((s) => s.showWindHUD)
+  const showLegend = useStore((s) => s.showLegend)
+  const showTimeSlider = useStore((s) => s.showTimeSlider)
 
   const setSimulation   = useStore((s) => s.setSimulation)
   const setCurrentRoute = useStore((s) => s.setCurrentRoute)
@@ -101,14 +108,21 @@ export default function App() {
     setStatus('idle')
   }, [setSimulation, setStatus])
 
+  const panelWidth = selectedFire ? 380 : 0
+
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', background: '#000' }}>
-      <MapView mapRef={mapRef} onMapClick={handleMapClick} />
-      <RoutePanel onScenarioSelect={handleScenarioSelect} />
-      <WindHUD />
-      <CompassHUD mapRef={mapRef} />
-      <TimeSlider />
-      <Legend />
+    <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden', background: '#000' }}>
+      <div style={{ width: panelWidth, minWidth: panelWidth, transition: 'width 220ms ease', background: '#050505' }}>
+        <FireDetailsPanel />
+      </div>
+      <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
+        <MapView mapRef={mapRef} onMapClick={handleMapClick} />
+        {!selectedFire && <RoutePanel onScenarioSelect={handleScenarioSelect} />}
+        {showWindHUD && <WindHUD />}
+        {showCompass && <CompassHUD mapRef={mapRef} />}
+        {showTimeSlider && <TimeSlider />}
+        {showLegend && <Legend />}
+      </div>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { Source, Layer } from 'react-map-gl'
+import { Source, Layer, useMap } from 'react-map-gl'
 import useStore from '@/store'
 
 const FIRE_COLORS = [
@@ -60,8 +60,11 @@ export default function FireLayer() {
   const timesteps = useStore((s) => s.timesteps)
   const currentStep = useStore((s) => s.currentStep)
   const metadata   = useStore((s) => s.metadata)
+  const setSelectedFire = useStore((s) => s.setSelectedFire)
   const [glowOpacity, setGlowOpacity] = useState(0.7)
+  const { current: map } = useMap()
 
+  // Glow animation effect
   useEffect(() => {
     let dir = 1
     const id = setInterval(() => {
@@ -74,6 +77,67 @@ export default function FireLayer() {
     }, 30)
     return () => clearInterval(id)
   }, [])
+
+  // Register click handlers for fire layers
+  useEffect(() => {
+    if (!map) return
+
+    const handleFireClick = (e) => {
+      if (e.features && e.features.length > 0) {
+        const layerId = e.features[0].layer.id
+        
+        // Extract timestep index from layer ID (format: "fire-fill-{i}" or "fire-glow-{i}")
+        const match = layerId.match(/fire-\w+-(\d+)/)
+        if (match) {
+          const fireIndex = parseInt(match[1], 10)
+          const timestep = timesteps[fireIndex]
+          if (timestep) {
+            setSelectedFire({ timestep, fireIndex })
+          }
+        }
+      }
+    }
+
+    // Add click listeners to all fire fill and glow layers
+    timesteps.forEach((_, i) => {
+      const fillLayerId = `fire-fill-${i}`
+      const glowLayerId = `fire-glow-${i}`
+
+      if (map.getLayer(fillLayerId)) {
+        map.on('click', fillLayerId, handleFireClick)
+        map.on('mouseenter', fillLayerId, () => {
+          map.getCanvas().style.cursor = 'pointer'
+        })
+        map.on('mouseleave', fillLayerId, () => {
+          map.getCanvas().style.cursor = 'auto'
+        })
+      }
+
+      if (map.getLayer(glowLayerId)) {
+        map.on('click', glowLayerId, handleFireClick)
+        map.on('mouseenter', glowLayerId, () => {
+          map.getCanvas().style.cursor = 'pointer'
+        })
+        map.on('mouseleave', glowLayerId, () => {
+          map.getCanvas().style.cursor = 'auto'
+        })
+      }
+    })
+
+    return () => {
+      // Clean up event listeners
+      timesteps.forEach((_, i) => {
+        const fillLayerId = `fire-fill-${i}`
+        const glowLayerId = `fire-glow-${i}`
+        if (map.getLayer(fillLayerId)) {
+          map.off('click', fillLayerId, handleFireClick)
+        }
+        if (map.getLayer(glowLayerId)) {
+          map.off('click', glowLayerId, handleFireClick)
+        }
+      })
+    }
+  }, [map, timesteps, setSelectedFire])
 
   // wind_direction_deg is FROM — fire spreads in the OPPOSITE direction
   const fireDirection = metadata ? (metadata.wind_direction_deg + 180) % 360 : 0

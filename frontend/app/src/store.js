@@ -17,6 +17,11 @@ const useStore = create((set) => ({
 
   status: 'idle',
   mode: 'demo',
+  selectedFire: null,
+  showCompass: true,
+  showWindHUD: true,
+  showLegend: true,
+  showTimeSlider: true,
 
   setSimulation: (data) => set({
     ignition: data.ignition,
@@ -43,8 +48,13 @@ const useStore = create((set) => ({
   setRerouted: (v) => set({ isRerouted: v }),
   setStatus: (s) => set({ status: s }),
   setMode: (m) => set({ mode: m }),
+  setShowCompass: (v) => set({ showCompass: v }),
+  setShowWindHUD: (v) => set({ showWindHUD: v }),
+  setShowLegend: (v) => set({ showLegend: v }),
+  setShowTimeSlider: (v) => set({ showTimeSlider: v }),
 
   resetReroute: () => set({ previousRoute: null, isRerouted: false }),
+  setSelectedFire: (fire) => set({ selectedFire: fire }),
 }))
 
 export default useStore
