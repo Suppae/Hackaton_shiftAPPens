@@ -3,6 +3,8 @@ import useStore from '@/store'
 import { degreesToCompass } from '@/utils/format'
 
 export default function WindHUD() {
+  const vectors = useStore((s) => s.vectors)
+  const environmental_data = useStore((s) => s.environmental_data)
   const metadata = useStore((s) => s.metadata)
   const [pulse, setPulse] = useState(1)
 
@@ -19,11 +21,15 @@ export default function WindHUD() {
     return () => clearInterval(id)
   }, [])
 
-  if (!metadata) return null
+  // Prefer new simulation fields, fallback to legacy metadata
+  const windSpeedMs = metadata?.wind_speed_ms
+  const windDirDeg = vectors?.wind_angle ?? metadata?.wind_direction_deg
+  const humidity = environmental_data?.humidity_pct ?? metadata?.humidity_pct
 
-  const { wind_speed_ms, wind_direction_deg, humidity_pct } = metadata
-  const compass = degreesToCompass(wind_direction_deg)
-  const rotation = wind_direction_deg
+  if (windSpeedMs === undefined && windDirDeg === undefined) return null
+
+  const compass = windDirDeg !== undefined ? degreesToCompass(windDirDeg) : 'N/A'
+  const rotation = windDirDeg ?? 0
 
   return (
     <div className="absolute top-4 right-4 z-10">
@@ -46,15 +52,26 @@ export default function WindHUD() {
 
         <div className="text-center">
           <div className="font-mono text-lg text-white font-bold leading-tight">
-            {wind_speed_ms.toFixed(1)} <span className="text-xs text-white/60">m/s</span>
+            {windSpeedMs?.toFixed(1) ?? '—'} <span className="text-xs text-white/60">m/s</span>
           </div>
           <div className="font-mono text-sm text-orange-400 font-semibold">{compass}</div>
         </div>
 
         <div className="border-t border-white/10 w-full pt-2 text-center">
           <div className="font-mono text-xs text-white/60">Humidade</div>
-          <div className="font-mono text-sm text-cyan-400 font-semibold">{humidity_pct}%</div>
+          <div className="font-mono text-sm text-cyan-400 font-semibold">
+            {humidity !== undefined ? `${humidity}%` : '—'}
+          </div>
         </div>
+
+        {vectors && (
+          <div className="border-t border-white/10 w-full pt-2 text-center">
+            <div className="font-mono text-xs text-white/60">Propagação</div>
+            <div className="font-mono text-sm text-red-400 font-semibold">
+              {vectors.speed_m_per_min?.toFixed(1)} m/min
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

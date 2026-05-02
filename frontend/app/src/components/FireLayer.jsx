@@ -14,19 +14,15 @@ const fillColor = [
   ...FIRE_COLORS.flat(),
 ]
 
-// Returns GeoJSON points only on the LEADING EDGE of the fire polygon
-// (the side facing the fire spread direction), offset slightly outward.
 function buildFrontArrows(fireFeature, fireDirection, maxArrows = 5) {
   const ring = fireFeature.geometry.coordinates[0]
   const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length
   const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length
 
-  // Unit vector in fire spread direction (bearing → lon/lat components)
   const rad = (fireDirection * Math.PI) / 180
   const dirLon = Math.sin(rad)
   const dirLat = Math.cos(rad)
 
-  // Keep only points whose (point - centroid) has positive dot product with spread dir
   const front = ring.slice(0, -1).filter((pt) => {
     const dot = (pt[0] - cx) * dirLon + (pt[1] - cy) * dirLat
     return dot > 0
@@ -60,11 +56,11 @@ export default function FireLayer() {
   const timesteps = useStore((s) => s.timesteps)
   const currentStep = useStore((s) => s.currentStep)
   const metadata   = useStore((s) => s.metadata)
+  const vectors    = useStore((s) => s.vectors)
   const setSelectedFire = useStore((s) => s.setSelectedFire)
   const [glowOpacity, setGlowOpacity] = useState(0.7)
   const { current: map } = useMap()
 
-  // Glow animation effect
   useEffect(() => {
     let dir = 1
     const id = setInterval(() => {
@@ -78,15 +74,12 @@ export default function FireLayer() {
     return () => clearInterval(id)
   }, [])
 
-  // Register click handlers for fire layers
   useEffect(() => {
     if (!map) return
 
     const handleFireClick = (e) => {
       if (e.features && e.features.length > 0) {
         const layerId = e.features[0].layer.id
-        
-        // Extract timestep index from layer ID (format: "fire-fill-{i}" or "fire-glow-{i}")
         const match = layerId.match(/fire-\w+-(\d+)/)
         if (match) {
           const fireIndex = parseInt(match[1], 10)
@@ -98,58 +91,47 @@ export default function FireLayer() {
       }
     }
 
-    // Add click listeners to all fire fill and glow layers
     timesteps.forEach((_, i) => {
       const fillLayerId = `fire-fill-${i}`
       const glowLayerId = `fire-glow-${i}`
 
       if (map.getLayer(fillLayerId)) {
         map.on('click', fillLayerId, handleFireClick)
-        map.on('mouseenter', fillLayerId, () => {
-          map.getCanvas().style.cursor = 'pointer'
-        })
-        map.on('mouseleave', fillLayerId, () => {
-          map.getCanvas().style.cursor = 'auto'
-        })
+        map.on('mouseenter', fillLayerId, () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', fillLayerId, () => { map.getCanvas().style.cursor = 'auto' })
       }
 
       if (map.getLayer(glowLayerId)) {
         map.on('click', glowLayerId, handleFireClick)
-        map.on('mouseenter', glowLayerId, () => {
-          map.getCanvas().style.cursor = 'pointer'
-        })
-        map.on('mouseleave', glowLayerId, () => {
-          map.getCanvas().style.cursor = 'auto'
-        })
+        map.on('mouseenter', glowLayerId, () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', glowLayerId, () => { map.getCanvas().style.cursor = 'auto' })
       }
     })
 
     return () => {
-      // Clean up event listeners
       timesteps.forEach((_, i) => {
         const fillLayerId = `fire-fill-${i}`
         const glowLayerId = `fire-glow-${i}`
-        if (map.getLayer(fillLayerId)) {
-          map.off('click', fillLayerId, handleFireClick)
-        }
-        if (map.getLayer(glowLayerId)) {
-          map.off('click', glowLayerId, handleFireClick)
-        }
+        if (map.getLayer(fillLayerId)) map.off('click', fillLayerId, handleFireClick)
+        if (map.getLayer(glowLayerId)) map.off('click', glowLayerId, handleFireClick)
       })
     }
   }, [map, timesteps, setSelectedFire])
 
-  // wind_direction_deg is FROM — fire spreads in the OPPOSITE direction
-  const fireDirection = metadata ? (metadata.wind_direction_deg + 180) % 360 : 0
+  // Use vectors.primary_spread_angle from backend if available, fallback to metadata
+  const fireDirection = vectors
+    ? vectors.primary_spread_angle
+    : metadata
+      ? (metadata.wind_direction_deg + 180) % 360
+      : 0
 
-  // ➤ naturally points East (90° from North in map space).
-  // To point in fireDirection: rotate by (fireDirection - 90).
+  // ➤ naturally points East (90°). To point in fireDirection: rotate by (fireDirection - 90)
   const arrowRotation = (fireDirection - 90 + 360) % 360
 
   const arrowGeoJSON = useMemo(() => {
-    if (!timesteps.length || currentStep === 0 || !metadata) return null
+    if (!timesteps.length || currentStep === 0) return null
     return buildFrontArrows(timesteps[currentStep - 1].burned_area, fireDirection)
-  }, [timesteps, currentStep, fireDirection]) // eslint-disable-line
+  }, [timesteps, currentStep, fireDirection])
 
   if (!timesteps.length) return null
 
@@ -194,9 +176,7 @@ export default function FireLayer() {
               'text-field': '➤',
               'text-size': 22,
               'text-rotate': arrowRotation,
-              // 'map' = rotation is fixed to geographic North — never changes when panning
               'text-rotation-alignment': 'map',
-              // 'viewport' = symbol face stays upright — no tilt with pitch 45°
               'text-allow-overlap': true,
               'text-ignore-placement': true,
               'text-pitch-alignment': 'map'

@@ -17,21 +17,34 @@ const INITIAL_VIEW = {
 const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12'
 const TOKEN = "pk.eyJ1IjoidGlhZ29tYW5pbmhhIiwiYSI6ImNtb213emZqYTBpdjcyc3M0bHlldWZnc2gifQ.KogqOP6C00qQ8VNtk847Ng"
 
-// Estilo dos focos reais
 const activeFiresStyle = {
     id: 'active-fires-layer',
     type: 'circle',
     paint: {
-      'circle-radius': 6,
-      'circle-color': '#ff0000', 
+      'circle-radius': 7,
+      'circle-color': '#ff1a1a',
       'circle-stroke-width': 2,
-      'circle-stroke-color': '#ffff00', 
-      'circle-opacity': 0.8
+      'circle-stroke-color': '#ffcc00',
+      'circle-opacity': 0.9,
+      'circle-blur': 0.2,
     }
-};
+}
+
+const activeFiresGlowStyle = {
+    id: 'active-fires-glow',
+    type: 'circle',
+    paint: {
+      'circle-radius': 14,
+      'circle-color': '#ff4400',
+      'circle-opacity': 0.25,
+      'circle-blur': 1,
+    }
+}
 
 export default function MapView({ mapRef, onMapClick, activeFires }) {
   const mode = useStore((s) => s.mode)
+  const timesteps = useStore((s) => s.timesteps)
+  const currentStep = useStore((s) => s.currentStep)
 
   const handleLoad = useCallback(({ target: map }) => {
     if (map.getSource('mapbox-dem')) return
@@ -54,21 +67,40 @@ export default function MapView({ mapRef, onMapClick, activeFires }) {
   }, [])
 
   const handleClick = useCallback((e) => {
-    // 1. Verificar se clicámos num fogo real primeiro
-    const features = e.features;
+    const features = e.features
     if (features && features.length > 0) {
-        const fireFeature = features.find(f => f.layer.id === 'active-fires-layer');
+        const fireFeature = features.find(f => f.layer.id === 'active-fires-layer' || f.layer.id === 'active-fires-glow')
         if (fireFeature && onMapClick) {
-            onMapClick([fireFeature.geometry.coordinates[0], fireFeature.geometry.coordinates[1]]);
-            return; // Sai cedo, já encontrou o fogo
+            const [lon, lat] = fireFeature.geometry.coordinates
+            const props = fireFeature.properties || {}
+            onMapClick([lon, lat], {
+                town: props.town || 'Desconhecido',
+                status: props.status || 'N/A',
+                man: props.man || 0,
+                terrain: props.terrain || '',
+                fireId: props.id,
+            })
+            return
         }
     }
 
-    // 2. Se for modo custom e clicou no vazio, gera fogo ali mesmo (Fallback)
     if (mode === 'custom' && onMapClick) {
-      onMapClick([e.lngLat.lng, e.lngLat.lat])
+      onMapClick([e.lngLat.lng, e.lngLat.lat], {
+          town: 'Ponto Manual',
+          status: 'Simulação',
+          man: 0,
+          terrain: '',
+          fireId: null,
+      })
     }
   }, [mode, onMapClick])
+
+  const interactiveLayers = ['active-fires-layer', 'active-fires-glow']
+  if (timesteps.length > 0 && currentStep > 0) {
+    for (let i = 0; i < currentStep; i++) {
+      interactiveLayers.push(`fire-fill-${i}`, `fire-glow-${i}`)
+    }
+  }
 
   return (
     <Map
@@ -80,19 +112,19 @@ export default function MapView({ mapRef, onMapClick, activeFires }) {
       mapStyle={MAP_STYLE}
       onLoad={handleLoad}
       onClick={handleClick}
-      interactiveLayerIds={['active-fires-layer']} /* IMPORTANTE: Torna os pontos clicáveis */
+      interactiveLayerIds={interactiveLayers}
       cursor={mode === 'custom' ? 'crosshair' : 'auto'}
     >
-      {/* Desenha os pontos de ignição reais */}
       {activeFires && (
           <Source id="active-fires-data" type="geojson" data={activeFires}>
+            <Layer {...activeFiresGlowStyle} />
             <Layer {...activeFiresStyle} />
           </Source>
       )}
 
       <FireLayer />
-      {/* <RouteLayer /> */}
-      {/* <MarkersLayer /> */}
+      <RouteLayer />
+      <MarkersLayer />
     </Map>
   )
 }

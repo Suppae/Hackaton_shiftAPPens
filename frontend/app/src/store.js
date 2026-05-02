@@ -4,6 +4,11 @@ const useStore = create((set) => ({
   ignition: null,
   timesteps: [],
   metadata: null,
+  vectors: null,
+  environmental_data: null,
+  source: 'manual',
+
+  activeFireInfo: null,
 
   currentStep: 0,
   isPlaying: false,
@@ -29,6 +34,9 @@ const useStore = create((set) => ({
     ignition: data.ignition,
     timesteps: data.timesteps,
     metadata: data.metadata,
+    vectors: data.vectors,
+    environmental_data: data.environmental_data,
+    source: data.source || 'manual',
     currentStep: 0,
     isPlaying: false,
     currentRoute: null,
@@ -36,6 +44,8 @@ const useStore = create((set) => ({
     isRerouted: false,
     status: 'idle',
   }),
+
+  setActiveFireInfo: (info) => set({ activeFireInfo: info }),
 
   setCurrentStep: (step) => set({ currentStep: step }),
   setIsPlaying: (v) => set({ isPlaying: v }),
@@ -59,6 +69,23 @@ const useStore = create((set) => ({
 
   resetReroute: () => set({ previousRoute: null, isRerouted: false }),
   setSelectedFire: (fire) => set({ selectedFire: fire }),
+
+  resetSimulation: () => set({
+    ignition: null,
+    timesteps: [],
+    metadata: null,
+    vectors: null,
+    environmental_data: null,
+    source: 'manual',
+    activeFireInfo: null,
+    selectedFire: null,
+    currentStep: 0,
+    isPlaying: false,
+    currentRoute: null,
+    previousRoute: null,
+    isRerouted: false,
+    status: 'idle',
+  }),
 }))
 
 export default useStore
