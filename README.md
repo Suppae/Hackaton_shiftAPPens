@@ -1,35 +1,32 @@
-## Introdução
+## Introduction
+This project was developed as part of the ShiftAPPens competition, organized by
+NEI (Núcleo de Estudantes de Informática) and JeK (junior enterprise). Over 48 hours,
+together with 3 friends, we had the opportunity to develop a project of our choice.
 
-Este projeto foi desenvolvido no âmbito da competição ShiftAPPens, organizada pelo
-NEI (Núcleo de Estudantes de Informática) e JeK (júnior empresa). Durante 48 horas,
-juntamente com 3 amigos, tivemos a oportunidade de desenvolver um projeto à nossa escolha.
+## Project description
+The application our group chose to develop predicts where a wildfire is likely to
+spread, based on weather data and terrain conditions. To do this, we used the
+**Rothermel model**, a mathematical model commonly used in forecasting wildfire
+spread, which calculates the rate at which fire advances based on vegetation type,
+wind, terrain slope, and humidity.
 
-## Descrição do projeto
+The application integrates APIs providing real-world environmental data, such as:
 
-A aplicação que o nosso grupo escolheu desenvolver prevê para onde um incêndio deve
-propagar-se, tendo em conta os dados meteorológicos e as condições do terreno. Para isso,
-recorremos ao **modelo de Rothermel**, um modelo matemático usado frequentemente na
-previsão de propagação de incêndios florestais, que calcula a velocidade a que o fogo avança
-com base no tipo de vegetação, no vento, no declive do terreno e na humidade.
+Wind, humidity, and temperature, obtained through Open-Meteo.
 
-A aplicação integra API's com valores meteorológicos reais tais como:
+Elevation and slope, obtained through Open Topo Data.
 
-Vento, humidade e temperatura, obtidos através da Open-Meteo.
+Vegetation, obtained through Google Earth Engine.
 
-Elevação e declive, obtidos através da Open Topo Data.
+Map, built using Mapbox.
 
-Vegetação, obtida através do Google Earth Engine.
+Using this data, the backend calculates, for each time instant, the area expected
+to be burning, returning this information in GeoJSON format, ready to be drawn
+directly on the map through the frontend, built with React, Vite, and Mapbox GL.
 
-Mapa, feito com recurso ao Mapbox.
-
-Com estes dados, o backend calcula, para cada instante de tempo, a área que se espera que
-esteja a arder, devolvendo essa informação em formato GeoJSON, pronta a ser desenhada
-diretamente no mapa através do frontend, feito em React com Vite e Mapbox GL.
-
-## Como correr o projeto
-
-Para correr o backend, é necessário entrar na pasta `backend`, instalar as dependências
-listadas em `requirements.txt` e iniciar o servidor com `uvicorn`:
+## How to run the project
+To run the backend, you need to enter the `backend` folder, install the dependencies
+listed in `requirements.txt`, and start the server with `uvicorn`:
 
 ```bash
 cd backend
@@ -37,10 +34,10 @@ pip install -r requirements.txt
 python -m uvicorn main:app --reload --port 8000
 ```
 
-A documentação interativa da API fica disponível em `http://localhost:8000/docs`.
+Interactive API documentation is available at `http://localhost:8000/docs`.
 
-Para correr o frontend, é necessário entrar na pasta `frontend/app`, instalar as
-dependências com `npm install` e depois correr o servidor de desenvolvimento:
+To run the frontend, you need to enter the `frontend/app` folder, install the
+dependencies with `npm install`, and then run the development server:
 
 ```bash
 cd frontend/app
